@@ -43,8 +43,23 @@ const quoteLines = (text: string): string =>
     .map((line) => (line === '' ? '>' : `> ${line}`))
     .join('\n')
 
-const escapeTableCell = (text: string): string =>
-  text.replaceAll('|', '\\|').replaceAll('\n', '<br>')
+const escapeAttribute = (text: string): string =>
+  text
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+
+const colorAttribute = (color: unknown): string =>
+  typeof color === 'string' && color !== 'default'
+    ? ` color="${escapeAttribute(color.replace(/_background$/, '_bg'))}"`
+    : ''
+
+const indentEnhanced = (text: string): string =>
+  text
+    .split('\n')
+    .map((line) => (line === '' ? '' : `\t${line}`))
+    .join('\n')
 
 const escapeLinkLabel = (text: string): string => text.replaceAll('[', '\\[').replaceAll(']', '\\]')
 
@@ -96,25 +111,25 @@ const renderMention = (opts: {
   const type = resolveMentionType(mention)
   switch (type) {
     case 'user':
-      // Authored plainText frequently already carries the '@' prefix; never
-      // double it. Bare names get the dialect's '@' prefix.
-      return plain.startsWith('@') || plain === '' ? plain || '@user' : `@${plain}`
     case 'page':
     case 'database': {
-      const label = plain !== '' ? plain : `@${type}`
-      if (typeof href === 'string') return `[${label}](${escapeLinkDestination(href)})`
-      // Authored mentions carry an id but no href; resolve a deterministic
-      // notion.so URL offline so the mention's identity survives.
       const id = (mention[type] as { id?: unknown } | undefined)?.id
-      return typeof id === 'string' && id !== ''
-        ? `[${label}](${escapeLinkDestination(notionObjectUrl(id))})`
-        : label
+      const url =
+        href ?? (typeof id === 'string' ? (type === 'user' ? id : notionObjectUrl(id)) : undefined)
+      if (url === undefined) {
+        state.diagnostics.push({ kind: 'flattened', message: `${type} mention missing identity` })
+        return plain
+      }
+      return `<mention-${type} url="${escapeAttribute(url)}">${plain}</mention-${type}>`
     }
     case 'date': {
-      const date = (mention.date ?? {}) as { start?: unknown; end?: unknown }
-      const start = typeof date.start === 'string' ? date.start : ''
-      const end = typeof date.end === 'string' ? date.end : undefined
-      return end !== undefined ? `${start} \u2192 ${end}` : start
+      const date = (mention.date ?? {}) as { start?: unknown; end?: unknown; time_zone?: unknown }
+      const attrs = [
+        typeof date.start === 'string' ? ` start="${escapeAttribute(date.start)}"` : '',
+        typeof date.end === 'string' ? ` end="${escapeAttribute(date.end)}"` : '',
+        typeof date.time_zone === 'string' ? ` timeZone="${escapeAttribute(date.time_zone)}"` : '',
+      ].join('')
+      return `<mention-date${attrs}/>`
     }
     case 'link_preview': {
       const url = (mention.link_preview as { url?: unknown } | undefined)?.url
@@ -344,39 +359,15 @@ const renderResolvedUrl = (opts: { type: string; url: string; caption: string })
 }
 
 const renderTable = (opts: { node: CandidateNode; state: WalkState }): string => {
-  const rows = opts.node.children.filter((child) => child.type === 'table_row')
-  if (rows.length === 0) return ''
-  // GFM has no first-column header flag; the authored distinction is lost.
-  if (opts.node.props.has_row_header === true) {
-    opts.state.diagnostics.push({
-      kind: 'flattened',
-      message: 'table row-header semantics dropped (no GFM spelling)',
+  const { node, state } = opts
+  const attrs = `${node.props.has_column_header === true ? ' header-row="true"' : ''}${node.props.has_row_header === true ? ' header-column="true"' : ''}`
+  const rows = node.children
+    .filter((child) => child.type === 'table_row')
+    .map((row) => {
+      const cells = Array.isArray(row.props.cells) ? (row.props.cells as RichTextItem[][]) : []
+      return `\t<tr>\n${cells.map((cell) => `\t\t<td>${renderRichText({ items: cell, state }).replaceAll('\n', '<br>')}</td>`).join('\n')}\n\t</tr>`
     })
-  }
-  const cellsOf = (row: CandidateNode): string[] => {
-    const cells = Array.isArray(row.props.cells) ? (row.props.cells as RichTextItem[][]) : []
-    return cells.map((cell) => escapeTableCell(renderRichText({ items: cell, state: opts.state })))
-  }
-  // Render each row exactly once — cell rendering emits diagnostics, and
-  // re-rendering for width/header derivation would duplicate them.
-  const renderedRows = rows.map(cellsOf)
-  const columnCount = Math.max(...renderedRows.map((cells) => cells.length))
-  const pad = (cells: string[]): string[] => {
-    const padded = [...cells]
-    while (padded.length < columnCount) padded.push('')
-    return padded
-  }
-  const hasColumnHeader = opts.node.props.has_column_header !== false
-  const header = pad(
-    hasColumnHeader ? renderedRows[0]! : Array.from({ length: columnCount }, () => ''),
-  )
-  const bodyRows = (hasColumnHeader ? renderedRows.slice(1) : renderedRows).map(pad)
-  const lines = [
-    `| ${header.join(' | ')} |`,
-    `| ${header.map(() => '---').join(' | ')} |`,
-    ...bodyRows.map((row) => `| ${row.join(' | ')} |`),
-  ]
-  return lines.join('\n')
+  return `<table${attrs}>\n${rows.join('\n')}\n</table>`
 }
 
 const unsupportedPlaceholder = (opts: {
@@ -440,27 +431,10 @@ const renderNode = (opts: {
     case 'heading_4': {
       const level = Number(node.type.slice(-1))
       const heading = `${'#'.repeat(level)} ${renderRichText({ items: richText, state })}`
-      // Emit before the toggleable early-return so colored toggleable
-      // headings still report the dropped color. Explicit 'default' has
-      // nothing to lose and must not be diagnosed.
-      if (props.color !== undefined && props.color !== 'default') {
-        state.diagnostics.push({
-          kind: 'color-dropped',
-          message: `heading color ${String(props.color)} dropped`,
-        })
-      }
-      // The toggle affordance itself is lost even when the heading currently
-      // has no children, so diagnose on is_toggleable alone.
-      if (props.is_toggleable === true) {
-        state.diagnostics.push({
-          kind: 'flattened',
-          message: `toggleable heading rendered as flat heading + following content`,
-        })
-        if (node.children.length > 0) {
-          return [heading, renderNodes({ nodes: node.children, state }).join('\n\n')].join('\n\n')
-        }
-      }
-      return heading
+      const attrs = `${props.is_toggleable === true ? ' toggle="true"' : ''}${colorAttribute(props.color)}`
+      const title = `${heading}${attrs === '' ? '' : ` {${attrs.trim()}}`}`
+      const nested = renderNodes({ nodes: node.children, state }).join('\n\n')
+      return nested === '' ? title : `${title}\n${indentEnhanced(nested)}`
     }
     case 'bulleted_list_item': {
       const marker = '- '
@@ -489,38 +463,26 @@ const renderNode = (opts: {
     }
     case 'toggle': {
       const title = renderRichText({ items: richText, state })
-      const inner = renderNodes({ nodes: node.children, state })
-      return inner.length === 0
-        ? `<details>\n<summary>${title}</summary>\n</details>`
-        : `<details>\n<summary>${title}</summary>\n\n${inner.join('\n\n')}\n\n</details>`
+      const inner = renderNodes({ nodes: node.children, state }).join('\n\n')
+      return `<details${colorAttribute(props.color)}>\n<summary>${title}</summary>\n${inner === '' ? '' : `${indentEnhanced(inner)}\n`}</details>`
     }
-    case 'quote':
     case 'callout': {
-      let prefix = ''
-      if (node.type === 'callout') {
-        const icon = props.icon as { type?: unknown; emoji?: unknown } | null | undefined
-        if (icon !== null && typeof icon === 'object' && icon.type === 'external') {
-          // An external icon URL has no inline spelling in a blockquote;
-          // dropping it silently would fabricate content (the default icon).
-          state.diagnostics.push({ kind: 'flattened', message: 'callout external icon dropped' })
-          prefix = ''
-        } else {
-          const emoji = icon?.emoji
-          // Absent icons stay absent — the candidate carries no icon and
-          // inventing a default would fabricate authored content.
-          prefix = typeof emoji === 'string' ? `${emoji} ` : ''
-        }
-        if (props.color !== undefined && props.color !== 'default') {
-          state.diagnostics.push({
-            kind: 'color-dropped',
-            message: `callout color ${String(props.color)} dropped`,
-          })
-        }
+      const icon = props.icon as { type?: unknown; emoji?: unknown } | null | undefined
+      if (icon !== null && typeof icon === 'object' && icon.type !== 'emoji') {
+        state.diagnostics.push({ kind: 'flattened', message: 'callout external icon dropped' })
       }
-      const own = quoteLines(`${prefix}${renderRichText({ items: richText, state })}`)
+      const attrs = `${typeof icon?.emoji === 'string' ? ` icon="${escapeAttribute(icon.emoji)}"` : ''}${colorAttribute(props.color)}`
+      const body = [
+        renderRichText({ items: richText, state }),
+        ...renderNodes({ nodes: node.children, state }),
+      ]
+        .filter((part) => part !== '')
+        .join('\n\n')
+      return `<callout${attrs}>\n${indentEnhanced(body)}\n</callout>`
+    }
+    case 'quote': {
+      const own = quoteLines(renderRichText({ items: richText, state }))
       const nested = children(node.children, 0)
-      // '>' separator line splits quoted child blocks into distinct
-      // paragraphs instead of one soft-wrapped quote paragraph.
       return nested === '' ? own : `${own}\n>\n${quoteLines(nested)}`
     }
     case 'code': {

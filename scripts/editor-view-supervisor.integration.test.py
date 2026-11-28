@@ -327,9 +327,16 @@ else:
             ("publication-abort", "lines"), ("publication-abort-single", "lines"),
             ("deadline", "utf8"), ("deadline", "paths"),
         ):
+            # Bun enumerates cwd ancestors before imports; shared /tmp growth is not test work.
             with self.subTest(termination=termination, payload=payload), \
-                 tempfile.TemporaryDirectory() as scratch:
-                root = Path(scratch)
+                 tempfile.TemporaryDirectory(dir=Path.home(), prefix="effect-utils-supervisor-") as scratch:
+                # Private metadata paths must resolve an owned sibling alias first.
+                workspace = Path(scratch) / "workspace"
+                workspace.mkdir(mode=0o700)
+                alias = Path(scratch) / "workspace-alias"
+                alias.symlink_to(workspace, target_is_directory=True)
+                root = alias.resolve()
+                self.assertFalse(root.is_relative_to(repo), "fixture root must remain outside the repository")
                 ready = root / "ready"
                 os.mkfifo(root / "release")
                 os.mkfifo(root / "publication-release")
@@ -347,8 +354,13 @@ else:
                     directory.mkdir(parents=True)
                 (package_tree / "index.js").write_text('export const workspace = "λ"\n')
                 (dependency / "index.js").write_text('export const dependency = "雪"\n')
-                (node_modules / "workspace").symlink_to("../package_tree")
-                (node_modules / "dep").symlink_to("../../store/dep")
+                if termination == "success":
+                    (node_modules / "workspace").symlink_to("../package_tree")
+                    (node_modules / "dep").symlink_to("../../store/dep")
+                else:
+                    # No backing roots: both packages must be actual in-root copy inputs.
+                    shutil.copytree(package_tree, node_modules / "workspace")
+                    shutil.copytree(dependency, node_modules / "dep")
                 (root / "editor-inputs.json").write_text(json.dumps({
                     "schema": "effect-utils/editor-view-inputs/v1",
                     "editorInputs": str(node_modules), "packageTree": str(package_tree),
@@ -390,12 +402,13 @@ time.sleep(60)
                 module = repo / "packages/@overeng/buck2-tools/src/buck-watch.ts"
                 publisher = repo / "packages/@overeng/buck2-tools/src/editor-view.ts"
                 runner.write_text(f'''
-import {{ existsSync, watch, writeFileSync }} from 'node:fs'
+import {{ appendFileSync, existsSync, watch, writeFileSync }} from 'node:fs'
 import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
 import {{ withPublicationCancellation }} from {json.dumps(str(repo / "scripts/editor-view-authority.ts"))}
 import {{ releaseEditorPublicationOwner, requireEditorPublicationOwner, tryAcquireEditorPublicationOwner, withEditorPublicationOwner }} from {json.dumps(str(repo / "packages/@overeng/buck2-tools/src/editor-publication-owner.ts"))}
 let pending = ''
 let released = false
+let publisherFailure: unknown
 await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({{
   root: process.cwd(), signal, run: async owner => {{
     requireEditorPublicationOwner({{ root: process.cwd(), owner }})
@@ -427,7 +440,13 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
     batchPublication: !['success', 'publication-abort-single'].includes(process.env.TERMINATION ?? ''),
     diagnosticTaskName: 'buck2:editor:bootstrap',
     run: (options) => {{
+      const publisherCommand = options.command === process.execPath &&
+        options.args[0] === {json.dumps(str(publisher))}
       return runCommand({{ ...options, onStderr: (chunk) => {{
+      if (publisherCommand) {{
+        appendFileSync('publisher-stderr.log', chunk)
+        return
+      }}
       options.onStderr?.(chunk)
       pending += chunk
       if (!released && pending.includes('BUCK-BLOCKED') && !process.env.TERMINATION?.startsWith('publication')) {{
@@ -436,6 +455,7 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
         writeFileSync('ready', '')
       }}
     }} }}).then((result) => {{
+      if (publisherCommand) writeFileSync('publisher-stdout.log', result.stdout)
       if (options.command === './buck2' && process.env.TERMINATION === 'success') {{
         if (result.stderr !== '') throw new Error('build stderr was captured twice')
         const event = options.args[options.args.indexOf('--event-log') + 1]
@@ -443,6 +463,12 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
         writeFileSync('command-completed-with-event-log', '')
       }}
       return result
+    }}).catch(error => {{
+      if (publisherCommand) {{
+        publisherFailure = error
+        writeFileSync('publisher-error.log', error.stack ?? String(error))
+      }}
+      throw error
     }})
     }},
   }},
@@ -472,7 +498,8 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
     }}
   }}
 }}) }}).catch((error) => {{
-  console.error(error.message); process.exitCode = 1
+  if (error !== publisherFailure) console.error(error.message)
+  process.exitCode = 1
 }})
 ''')
                 # Inject elapsed time only after the ring has consumed the marker:
@@ -485,18 +512,41 @@ spec.loader.exec_module(supervisor)
 supervisor.time.monotonic = lambda: 2 if pathlib.Path("ready").exists() else 0
 sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline", "publication") else None, 0.2))
 '''
-                result = subprocess.run(
-                    [sys.executable, "-c", driver, bun, str(runner)],
-                    cwd=root, capture_output=True, text=True, timeout=10,
-                    env={**os.environ, "CI": "1", "PAYLOAD": payload,
-                         "EDITOR_VIEW_HOST_BUDGET_STATE": str(root / "budget-state"),
-                         "EDITOR_VIEW_CONTENT_STORE": str(root / "content"),
-                         "HOME": str(Path.home()) + "/private-" + "a" * 180,
-                         "TMPDIR": str(Path.home()) + "/private-" + "a" * 180 + "/temp-zone",
-                         "TERMINATION": termination, "TRACEPARENT": "",
-                         "OTEL_TASK_TRACEPARENT": ""},
-                )
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "-c", driver, bun, str(runner)],
+                        cwd=root, capture_output=True, text=True, timeout=10,
+                        env={**os.environ, "CI": "1", "PAYLOAD": payload,
+                             "EDITOR_VIEW_HOST_BUDGET_STATE": str(root / "budget-state"),
+                             "EDITOR_VIEW_CONTENT_STORE": str(root / "content"),
+                             "HOME": str(Path.home()) + "/private-" + "a" * 180,
+                             "TMPDIR": str(Path.home()) + "/private-" + "a" * 180 + "/temp-zone",
+                             "TERMINATION": termination, "TRACEPARENT": "",
+                             "OTEL_TASK_TRACEPARENT": ""},
+                    )
+                except subprocess.TimeoutExpired as error:
+                    # Preserve available producer evidence before owned-root cleanup.
+                    print(f"supervisor timeout: {termination}/{payload}, ready={ready.exists()}, "
+                          f"command-completed={(root / 'command-completed-with-event-log').exists()}, "
+                          f"cleaning={(root / 'publication-cleaning').exists()}",
+                          file=sys.stderr, flush=True)
+                    print(f"supervisor stdout={error.stdout!r}\nstderr={error.stderr!r}",
+                          file=sys.stderr, flush=True)
+                    for name in ("publisher-stderr.log", "publisher-stdout.log", "publisher-error.log"):
+                        evidence = root / name
+                        if evidence.is_file():
+                            print(f"{name}: {evidence.read_bytes()!r}", file=sys.stderr, flush=True)
+                    raise
                 output = result.stderr
+                if termination == "success" or termination.startswith("publication"):
+                    publisher_output = (root / "publisher-stderr.log").read_text()
+                    self.assertTrue(publisher_output)
+                    self.assertIn("[editor-view-phase] ", publisher_output)
+                    self.assertNotIn("BUCK-BLOCKED", publisher_output)
+                    if termination == "success":
+                        self.assertTrue((root / "publisher-stdout.log").is_file())
+                    else:
+                        self.assertTrue((root / "publisher-error.log").read_text())
                 if termination == "success":
                     self.assertEqual(result.returncode, 0, output)
                     self.assertNotIn("BUCK-BLOCKED", output)

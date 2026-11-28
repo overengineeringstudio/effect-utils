@@ -79,6 +79,10 @@ export class IrohNode {
      */
     homeRelay(): Promise<any>;
     /**
+     * Re-probes connectivity after a browser network change without replacing the endpoint.
+     */
+    networkChange(): Promise<any>;
+    /**
      * The endpoint secret key, so a device can keep a stable id across reloads.
      */
     secretKey(): Uint8Array;
@@ -90,7 +94,7 @@ export class IrohNode {
  *
  * Browsers need relay URLs *without* a trailing dot. iroh's built-in n0 defaults are
  * fully-qualified names ("euc1-1.relay.n0.iroh.link."), which browsers can't use for
- * TLS/WebSocket — the endpoint then never comes online — so the app passes its own list.
+ * TLS/WebSocket — the endpoint then never comes online — so the caller passes its own list.
  */
 export function spawnNode(relay_url?: string | null, secret_key?: Uint8Array | number[] | null): Promise<IrohNode>;
 
@@ -125,19 +129,20 @@ export interface InitOutput {
     readonly irohnode_connect: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly irohnode_endpointId: (a: number) => [number, number];
     readonly irohnode_homeRelay: (a: number) => any;
+    readonly irohnode_networkChange: (a: number) => any;
     readonly irohnode_secretKey: (a: number) => [number, number];
     readonly spawnNode: (a: number, b: number, c: number, d: number) => any;
     readonly start: () => void;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke___js_sys_8373d5bfd33c6d5d___Function_fn_wasm_bindgen_b91c975d3771a246___JsValue_____wasm_bindgen_b91c975d3771a246___sys__Undefined___js_sys_8373d5bfd33c6d5d___Function_fn_wasm_bindgen_b91c975d3771a246___JsValue_____wasm_bindgen_b91c975d3771a246___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke___wasm_bindgen_b91c975d3771a246___JsValue__core_7d5f0a2ba6a62c33___result__Result_____wasm_bindgen_b91c975d3771a246___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke___wasm_bindgen_b91c975d3771a246___JsValue______true_: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke___web_sys_77952476eb354f31___features__gen_CloseEvent__CloseEvent______true_: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke___web_sys_77952476eb354f31___features__gen_MessageEvent__MessageEvent______true_: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke_______true_: (a: number, b: number) => void;
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke_______true__1_: (a: number, b: number) => void;
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke_______true__2_: (a: number, b: number) => void;
-    readonly wasm_bindgen_b91c975d3771a246___convert__closures_____invoke_______true__3_: (a: number, b: number) => void;
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke___js_sys_4b37179840c12c16___Function_fn_wasm_bindgen_249e558e99451b42___JsValue_____wasm_bindgen_249e558e99451b42___sys__Undefined___js_sys_4b37179840c12c16___Function_fn_wasm_bindgen_249e558e99451b42___JsValue_____wasm_bindgen_249e558e99451b42___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke___wasm_bindgen_249e558e99451b42___JsValue__core_926917a1849c3d84___result__Result_____wasm_bindgen_249e558e99451b42___JsError___true_: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke___wasm_bindgen_249e558e99451b42___JsValue______true_: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke___web_sys_632bc5453bc7dd19___features__gen_CloseEvent__CloseEvent______true_: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke___web_sys_632bc5453bc7dd19___features__gen_MessageEvent__MessageEvent______true_: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke_______true_: (a: number, b: number) => void;
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke_______true__1_: (a: number, b: number) => void;
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke_______true__2_: (a: number, b: number) => void;
+    readonly wasm_bindgen_249e558e99451b42___convert__closures_____invoke_______true__3_: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;

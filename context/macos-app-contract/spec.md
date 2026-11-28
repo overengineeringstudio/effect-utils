@@ -140,6 +140,15 @@ rejected: its undocumented ABI would add an unnecessary security boundary.
 Consumers needing different process types must choose compatible job-level
 policies explicitly; the runtime never silently changes a GUI job for a backup.
 
+Both `launchd.extra` and `guiLaunchd.extra` accept explicit `Nice` (-20..19) and
+`SoftResourceLimits`/`HardResourceLimits` with exactly one positive integer
+`NumberOfFiles`. A declared soft limit cannot exceed the declared hard limit.
+Assembly preserves these fields in ctl's job configuration instead of refusing
+the resource policy that runtime admission must verify. Unknown resource keys
+and unknown job overrides are rejected for both roles. Identity overrides remain
+forbidden: the paired controller derives system UserName/GroupName from the
+sealed target UID; consumers do not supply them in `launchd.extra`.
+
 `ChildOperations` registration is compiled Rust assembly, separate from immutable
 declarations. The production registry is empty by default: unknown probes,
 scheduled IDs, session-incompatible registrations and mismatched scheduled child

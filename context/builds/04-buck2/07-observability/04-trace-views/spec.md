@@ -185,7 +185,17 @@ Loki streams response from the fixed occurrence-reader proxy. Producer ledger
 envelopes reconstruct original snapshots by ordinal, count and SHA-256; missing,
 conflicting or corrupt snapshots and responses reaching 5,000 entries fail with
 coverage UNKNOWN. No source header or fleet-completeness claim is synthesized.
-The JSON report is retained locally and its record/gap counts enter the job summary.
+Scheduled reads cover the previous UTC day; manual dispatches cover the rolling
+24 hours ending at query time, allowing a newly deployed producer to be measured
+without waiting for midnight. Manual dispatch may instead supply paired
+`occurrence_since` / `occurrence_until` exact UTC timestamps and an optional
+`occurrence_host` from the configured inventory for a specific receipt.
+Exact windows must be positive and at most 24 hours; a scoped host becomes the
+only expected host for that read. Both default windows remain bounded and half-open.
+After reader disconnect, the full per-occurrence JSON report enters the job
+summary and log output, alongside the record/gap counts. Operational acceptance
+retains the queried JSON with its execution receipt. This uses no new upload action;
+artifact transport requires the separately provisioned ci-storage broker.
 Only scheduled or manual runs on this repository's main branch receive the
 dedicated `tag:ci-buck2-occurrence-read` OIDC identity, disconnected before the
 existing evidence writer connects. Configure repository variables
