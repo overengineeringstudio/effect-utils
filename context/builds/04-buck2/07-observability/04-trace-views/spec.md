@@ -252,12 +252,15 @@ byte limits remain independent. ZIP inspection uses platform `unzip`
 (`UNZIP_BIN` override, otherwise on PATH), bounded to 16 entries and 80 MiB
 per decoded member. Only the two exact evidence member names are read to
 stdout; archive-controlled paths are never extracted. Downloads use at most
-two concurrent requests, with 250 ms pacing before each GitHub request. The
-normal daily collection target is at most about 700 GitHub calls; the hard cap is
-800, counting every request attempt, including every retry. Transport failures
-and HTTP 5xx responses receive backoff with at most three attempts total per
-request, not three retries. Every attempt must satisfy the hard cap and the
-remaining-budget floor of 200, reserving headroom for in-flight requests.
+two concurrent requests, with 250 ms pacing before each GitHub request.
+Each full-day collection pays for run/job/artifact discovery and one GitHub API
+request per artifact download. The hard cap is 4,000 calls, accommodating the
+1,000-run/2,000-artifact population without sampling readers or writers and
+counting every request attempt, including every retry. Transport failures and
+HTTP 5xx responses receive backoff with at most three attempts total per request,
+not three retries. Every attempt must satisfy the hard cap and the
+remaining-budget floor of 200, reserving headroom for in-flight requests. The
+whole collection has a separate 15-minute deadline.
 Reaching the API-call cap or remaining-budget floor emits an explicit repo-only
 `buck2.cache.join.evidence_gaps` observation, preserves independent valid
 observations already collected, and reports `budget_stopped` on stderr and

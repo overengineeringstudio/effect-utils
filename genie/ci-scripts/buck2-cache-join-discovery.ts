@@ -104,6 +104,10 @@ export const artifactCanMatter = (name: string): boolean => {
   return true
 }
 
+/** Budget run/job/artifact discovery plus downloads for the bounded, unsampled day. */
+export const apiCallCap = 4000
+export const apiReserveFloor = 200
+
 /** Stop before the discovery call cap or the API reserve floor is reached. */
 export const apiBudgetAvailable = ({
   calls,
@@ -111,7 +115,7 @@ export const apiBudgetAvailable = ({
 }: {
   calls: number
   remaining: number | undefined
-}): boolean => calls < 800 && (remaining === undefined || remaining > 200)
+}): boolean => calls < apiCallCap && (remaining === undefined || remaining > apiReserveFloor)
 
 /** Match artifact creation timestamps within the half-open millisecond discovery window. */
 export const artifactInWindow = ({
