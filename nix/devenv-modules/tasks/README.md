@@ -218,26 +218,90 @@ UID, resource, sibling namespace or final seal is omitted. The ignored real
 collects/rechecks 64 owned target threads, then requires a sibling namespace
 change and a newly born task to veto complete-group closure.
 
-Descriptor membership churn has a generic per-task, five-pass unpublished
-stable-pair repair, both during initial resource capture and later closing
-phases. Every pinned object from every attempted table remains retained and
-must have actual native negative membership before a changed table can close;
-candidate positives, proxy/opaque objects and failed capability proofs stay
-protective. An enumerated FD that vanishes before pinning is unclassified and
-cannot disappear through the outer ENOENT recapture. A formerly seen candidate
-also vetoes a whole-task retry instead of being forgotten. No PID/name/path-prefix
+Descriptor stability belongs to the retained process, not each logical TID.
+Native `KCMP_FILES` equality partitions its actual descriptor-table contexts;
+each qualified class shares immutable O_PATH pin snapshots and retained repair
+history without duplicating kernel FDs. A process resource phase has the existing
+five-pass unpublished pair-repair budget, shared across its classes. Physical
+tables are captured/sealed by class, with a final class seal after all logical
+task views ran. Task generations/credentials and class membership are re-proven
+at collection and every final closure; a changed or unprovable shared class HOLDs.
+Unavailable initial kernel proof means independent capture, never assumed sharing.
+Root/cwd/executable/maps and native mount membership remain per task, including
+private/unshared contexts. Every task still classifies its logical FD references
+in its own native view; FD pin and table-seal sharing grants no namespace authority.
+Every observed/failed-pass pin remains retained and must prove native-negative
+before table replacement can close; candidate positives, proxy/opaque objects
+and failed capability proofs stay
+protective. An enumerated FD that vanishes before first pin is retained as
+explicit uncertainty, never as an empty/negative slot or an outer ENOENT retry.
+Missing-before-pin uncertainty or exhaustion of the pair-repair budget invokes
+the bounded process-local closing witness: at most three follow-up process
+passes capture every live task's root/cwd/executable and mappings, and each
+kernel-qualified FD class once, using all actual task/native mount views.
+Every retained object, including all earlier incomplete passes, must prove
+native-negative; the successful complete pass must reclose every resource table,
+task generation, credentials, namespaces and whole-process membership. No
+thread-group resource sharing is assumed. Prior pins and per-task native views
+survive until emission and are requalified at final closure. The original
+root/cwd/executable/mapping seals also remain required. A formerly seen candidate
+vetoes closure even if its numeric slot subsequently vanishes or is reused.
+Persistent uncertainty, missing native provenance, opaque objects or exhausted
+closing bounds remain UNKNOWN/HOLD. No PID/name/path-prefix
 waiver exists. Each successful table closes an independent enumeration against
 all retained slot identities and a second enumeration, with unchanged task,
 namespace, whole-group, mount and alias seals. Exhaustion remains UNKNOWN/HOLD.
-Additional pins share the existing transaction-wide object bound; the final
-receipt separately counts retained objects, retained ordinary descriptor pins
-and the last authenticated ordinary descriptor-table slots, not their union.
+Additional pins share the existing transaction-wide physical object bound;
+pointer-shared snapshots are charged/counted once even when adopted by a closing
+witness. The receipt separately reports physical retained objects/ordinary FD
+pins and logical per-task authenticated table slots; shared tables do not merge
+task references or candidate effects.
 The ignored real
 `candidates::tests::actual_fd_snapshot_repair_preserves_positive_unknown_and_final_seals`
 uses an owned exec'd FD mutator and frozen native candidate coverage. It exercises
 initial capture, two late noncandidate repairs, a closed candidate FD veto,
-io_uring rejection and deterministic five-pass exhaustion without foreign
-lifecycle changes. Source/build success is not execution of this kernel fixture.
+io_uring rejection, five-pass pair exhaustion and bounded process-closing
+exhaustion without foreign lifecycle changes. Source/build success is not
+execution of this kernel fixture.
+The ignored proc regressions
+`tests::actual_vanished_before_pin_full_process_negative_closes`,
+`tests::actual_vanished_slot_preserves_current_and_prior_candidate_pins`,
+`tests::actual_vanished_slot_reuse_to_candidate_or_opaque_holds` and
+`tests::actual_vanished_before_pin_process_instability_is_bounded` reexec an
+owned FD mutator and deterministically close a real enumerated slot before its
+first pin. They cover closed-negative acceptance with all-task proof, current
+and formerly pinned duplicate candidate vetoes, reuse to candidate/io_uring,
+and the initial capture plus three-pass bound. They do not model adversarial
+queued SCM_RIGHTS capability transfer; the managed-cooperative boundary is
+unchanged, and pathname renaming is not proof that a queued inode capability
+has disappeared.
+The additional ignored proc tests
+`tests::actual_shared_files_class_captures_once_and_qualifies_every_task`,
+`tests::actual_private_files_class_keeps_candidate_and_membership_mutation_holds`
+and `tests::actual_process_stable_pair_exhaustion_uses_closing_witness` use the
+same owned exec fixture. They require real KCMP_FILES proof, verify one physical
+capture/charge with every logical task checked, preserve a private files_struct
+candidate, reject later unshare despite equal FD contents, and force the original
+pair-repair budget to exhaust before a successful process-closing fallback.
+
+A process failure does not terminate the survey of other processes. Unproven or
+unvisited processes and any failed global process-set/root/final seal keep the
+entire result UNKNOWN; no partial negative authorizes removal. Private bounded
+journal lines use `worktree-holder-evidence: census-process` with validated
+`nonce`, compiled `producer`, TGID (`pid`), `uid`, `tasks`, `phase`, static `reason`,
+`native_cwd` and `native_maps`. Diagnostic negatives require actual native proof
+and closing seals for every corresponding task context, never a daemon/UID rule.
+The terminal `census-summary` reports unique-TGID `discovered`, `visited`, `proven`,
+`failed`, `unvisited`, `truncated`, `global_failure` and `outcome`. `visited` means
+a final local proof or a recorded failure, not provisional capture; deadline-left
+processes remain unvisited. The guard emits only after response handling finishes,
+with `terminal=true`. Setup failure has unknown discovery/unvisited counts, not
+an empty proven host; capped failure records set `truncated=true`. These logs
+contain no argv/environment/file contents and are diagnostic, never authority.
+The ignored census test
+`census::tests::actual_independent_owned_process_failures_aggregate_without_hiding_unvisited`
+uses four owned kernel processes, records two independent generation failures,
+proves one survivor and preserves the fourth as unvisited.
 
 Task departure is non-holding only for a missing nonleader re-proven absent
 from the retained leader's task list, with the original live leader generation

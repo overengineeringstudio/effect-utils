@@ -259,6 +259,18 @@ pub fn same_open_file(left: &impl AsRawFd, right: &impl AsRawFd) -> io::Result<b
     if answer < 0 { return Err(io::Error::last_os_error()); }
     Ok(answer == 0)
 }
+/// KCMP_FILES compares actual files_struct identity, not FD-number equality or
+/// thread-group membership. Callers must bracket numeric TIDs with retained
+/// generation/credential seals; errors never establish sharing.
+pub fn same_files(left: u32, right: u32) -> io::Result<bool> {
+    // SAFETY: KCMP_FILES=2 consumes only scalar TIDs; indices are unused/zero.
+    // This read-only syscall neither duplicates nor changes a target resource.
+    let answer = unsafe {
+        syscall(SYS_KCMP, c_long::from(left), c_long::from(right), 2 as c_int, 0 as c_long, 0 as c_long)
+    };
+    if answer < 0 { return Err(io::Error::last_os_error()); }
+    Ok(answer == 0)
+}
 fn require_cloexec(fd: OwnedFd) -> io::Result<OwnedFd> {
     // SAFETY: F_GETFD=1 reads flags of this fresh owned descriptor.
     let flags = unsafe { fcntl(fd.as_raw_fd(), 1) };

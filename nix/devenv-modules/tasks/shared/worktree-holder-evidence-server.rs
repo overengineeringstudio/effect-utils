@@ -65,15 +65,22 @@ fn retry_missing_once<T>(mut capture: impl FnMut() -> io::Result<T>) -> io::Resu
         result=>result,
     }
 }
-fn collect(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
+fn collect<'a, 'nonce>(request: &'a Request, peer: &client::Peer, role: &'a client::SelfRole,
+    survey: &'a std::cell::RefCell<census::ProcessSurvey<'nonce>>, deadline: Instant)
+    -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
     // Drop the entire failed graph; retry ENOENT once under the original deadline.
-    retry_missing_once(|| {
+    let result = retry_missing_once(|| {
+        survey.borrow_mut().restart();
         role.recheck(deadline)?;
         peer.recheck(deadline)?;
-        collect_once(request,peer,role,deadline)
-    })
+        collect_once(request,peer,role,survey,deadline)
+    });
+    if result.is_err() { survey.borrow_mut().request_failed(); }
+    result
 }
-fn collect_once(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
+fn collect_once<'a, 'nonce>(request: &'a Request, peer: &client::Peer, role: &'a client::SelfRole,
+    survey: &'a std::cell::RefCell<census::ProcessSurvey<'nonce>>, deadline: Instant)
+    -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
     let candidates=candidates::CandidateSet::pin(request,peer.uid,deadline)?;
     let peer_roots=client::PeerRoots::pin(peer,&candidates,deadline)?;
     // Store pinning opens roots only. Inventory starts ONLY after the original
@@ -82,7 +89,7 @@ fn collect_once(request: &Request, peer: &client::Peer, role: &client::SelfRole,
         Some(store)=>Some(client::Client::attest_from_peer(peer,store,peer.uid,peer_roots.root(0))?),
         None=>None,
     };
-    let census=census::Census::collect(request,&candidates,store_client.as_ref(),peer,role,deadline)?;
+    let census=census::Census::collect(request,&candidates,store_client.as_ref(),peer,role,survey,deadline)?;
     census.recheck(&candidates,store_client.as_ref(),deadline)?;
     candidates.recheck(deadline)?;
     peer_roots.recheck(peer,deadline)?;
@@ -114,12 +121,14 @@ fn serve_once(deadline: Instant) -> io::Result<()> {
     let peer=client::Peer::attest(&socket,uid,deadline)?;
     let input=transport::read_request(&mut socket,deadline)?;
     let request=Request::parse(&input,true)?;
+    let survey = std::cell::RefCell::new(census::ProcessSurvey::new(&request.nonce));
+    let result = (|| {
     let namespaces=role.namespace_ids();
     if namespaces!=INITIAL_NAMESPACES { return Err(io::Error::other("noninitial server namespaces")); }
     let (host_id,boot_id)=host_identity(deadline)?;
     let paths_digest=digest::digest(request.paths_receipt(),deadline)?;
     // Retain root/lease OFDs and generation-bound alias capabilities through emission.
-    let (observation,_pins,aliases)=match collect(&request,&peer,&role,deadline) {
+    let (observation,_pins,aliases)=match collect(&request,&peer,&role,&survey,deadline) {
         Ok((observation,candidates,store_client,peer_roots,aliases))=>(observation,Some((candidates,store_client,peer_roots)),Some(aliases)),
         Err(error)=>{
             // Never return an absence after partial coverage. Do not leak
@@ -141,6 +150,9 @@ fn serve_once(deadline: Instant) -> io::Result<()> {
     // Final seal follows serialization too; unsupported/error/churn emits no proof.
     if let Some(aliases)=&aliases { aliases.recheck(deadline)?; }
     transport::write_response(&mut socket,&output,deadline)
+    })();
+    if result.is_err() { survey.borrow_mut().mark_global_failure("response-closing"); }
+    result
 }
 fn run() -> io::Result<()> {
     linux::bound_helper_lifetime()?;

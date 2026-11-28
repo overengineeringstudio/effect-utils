@@ -1,5 +1,5 @@
 //! Root membership and management policy over retained proc-library snapshots.
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::fs::File;
 use std::io;
 use std::os::fd::OwnedFd;
@@ -10,12 +10,182 @@ use super::objects;
 use super::protocol::{self, ObjectIdentity, Reference, ReferenceEffect, ReferenceKind, RootEvidence, Status, UnknownReason};
 use super::{linux, runtime::Runtime};
 use worktree_holder_proc::scopes::{ProcessScope, TaskScope, Held, References as NativeReferences,
-    deadline_check, scope_path, numbers, mapping_names, qualify_object};
+    ResourceKind, deadline_check, scope_path, numbers, mapping_names, qualify_object};
 const ROOT_REFERENCE_LIMIT: usize = 4096;
 const TOTAL_REFERENCE_LIMIT: usize = 65536;
 const TASK_LIMIT: usize = 262144;
 const OBJECT_LIMIT: usize = 1048576;
-pub struct Census<'a> {
+const FAILURE_LOG_LIMIT: usize = 64;
+
+/// Private journal evidence, never deletion authority or a wire extension.
+pub struct ProcessSurvey<'a> {
+    nonce: &'a str,
+    discovered: Option<usize>,
+    visited: std::collections::BTreeSet<u32>,
+    proven: std::collections::BTreeSet<u32>,
+    failed: std::collections::BTreeSet<u32>,
+    failures: Vec<ProcessFailure>,
+    truncated: bool,
+    global_failure: bool,
+    pub phase: &'static str,
+}
+struct ProcessFailure {
+    pid: u32, uid: Option<u32>, tasks: Option<usize>, phase: &'static str, reason: &'static str,
+    cwd: NativeStatus, maps: NativeStatus,
+}
+struct DiagnosticCount(Option<usize>);
+impl std::fmt::Display for DiagnosticCount {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 { Some(value) => std::fmt::Display::fmt(&value, out), None => out.write_str("unknown") }
+    }
+}
+impl<'a> ProcessSurvey<'a> {
+    pub fn new(nonce: &'a str) -> Self {
+        Self { nonce, discovered: None, visited: Default::default(), proven: Default::default(),
+            failed: Default::default(), failures: Vec::new(), truncated: false, global_failure: false, phase: "setup" }
+    }
+    pub fn restart(&mut self) {
+        self.discovered = None;
+        self.visited.clear(); self.proven.clear(); self.failed.clear();
+        self.failures.clear(); self.truncated = false;
+        self.global_failure = false; self.phase = "setup";
+    }
+    pub fn mark_global_failure(&mut self, phase: &'static str) {
+        self.global_failure = true;
+        self.phase = phase;
+    }
+    pub fn request_failed(&mut self) {
+        if self.failed.is_empty() && !self.global_failure {
+            self.mark_global_failure("request-closing");
+        }
+    }
+    fn fail(&mut self, pid: u32, process: Option<&ProcessScope>, phase: &'static str,
+        error: &io::Error, cwd: NativeStatus, maps: NativeStatus) {
+        self.visited.insert(pid);
+        self.proven.remove(&pid);
+        self.failed.insert(pid);
+        if let Some(previous) = self.failures.iter_mut().find(|failure| failure.pid == pid) {
+            previous.cwd.merge(cwd); previous.maps.merge(maps);
+            return;
+        }
+        if self.failures.len() == FAILURE_LOG_LIMIT { self.truncated = true; return; }
+        let uid = process.and_then(|process| process.tasks.iter()
+            .find(|task| task.identity.pid == pid)).map(|task| task.uids[0]);
+        let tasks = process.map(|process| process.tasks.len());
+        let reason = match worktree_holder_proc::scopes::descriptor_instability(error) {
+            Some(worktree_holder_proc::scopes::DescriptorInstability::StablePair) => "descriptor-stable-pair",
+            Some(worktree_holder_proc::scopes::DescriptorInstability::ProcessClosing) => "process-closing-budget",
+            Some(worktree_holder_proc::scopes::DescriptorInstability::ClassMembership) => "descriptor-class-membership",
+            None => match error.kind() {
+                io::ErrorKind::PermissionDenied => "permission", io::ErrorKind::NotFound => "vanished",
+                io::ErrorKind::Interrupted => "unstable", io::ErrorKind::TimedOut => "deadline",
+                io::ErrorKind::Unsupported => "unsupported", _ => "unqualified",
+            },
+        };
+        self.failures.push(ProcessFailure { pid, uid, tasks, phase, reason, cwd, maps });
+    }
+    fn prove(&mut self, pid: u32) {
+        self.visited.insert(pid);
+        if !self.failed.contains(&pid) { self.proven.insert(pid); }
+    }
+    fn incomplete(&self) -> bool {
+        self.global_failure || !self.failed.is_empty() || self.discovered != Some(self.proven.len())
+    }
+}
+impl Drop for ProcessSurvey<'_> {
+    fn drop(&mut self) {
+        for failure in &self.failures {
+            eprintln!("worktree-holder-evidence: census-process nonce={} producer={} pid={} uid={} tasks={} phase={} reason={} native_cwd={} native_maps={}",
+                self.nonce, super::PRODUCER, failure.pid, DiagnosticCount(failure.uid.map(|uid| uid as usize)),
+                DiagnosticCount(failure.tasks), failure.phase, failure.reason, failure.cwd.text(), failure.maps.text());
+        }
+        let discovered = DiagnosticCount(self.discovered);
+        let unvisited = DiagnosticCount(self.discovered.map(|count| count.saturating_sub(self.visited.len())));
+        eprintln!("worktree-holder-evidence: census-summary nonce={} producer={} terminal=true discovered={} visited={} proven={} failed={} unvisited={} truncated={} phase={} global_failure={} outcome={}",
+            self.nonce, super::PRODUCER, discovered, self.visited.len(), self.proven.len(), self.failed.len(),
+            unvisited, self.truncated, self.phase, self.global_failure,
+            if self.incomplete() { "unknown" } else { "proven" });
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NativeStatus { Negative, Positive, Unknown }
+impl NativeStatus {
+    fn text(self) -> &'static str {
+        match self { Self::Negative => "negative", Self::Positive => "positive", Self::Unknown => "unknown" }
+    }
+    fn merge(&mut self, other: Self) {
+        *self = match (*self, other) {
+            (Self::Positive, _) | (_, Self::Positive) => Self::Positive,
+            (Self::Unknown, _) | (_, Self::Unknown) => Self::Unknown, _ => Self::Negative,
+        };
+    }
+    fn from_match(outcome: MatchOutcome) -> Self {
+        match outcome {
+            MatchOutcome::Native(matches) if matches.is_empty() => Self::Negative,
+            MatchOutcome::Native(_) => Self::Positive, MatchOutcome::NeedsProxy => Self::Unknown,
+        }
+    }
+}
+
+/// Negative requires every actual task context and its native closing seals.
+fn diagnostic_cwd_maps(process: &ProcessScope, candidates: &CandidateSet,
+    deadline: Instant, resources: Option<&[Option<References>]>) -> (NativeStatus, NativeStatus) {
+    let mut cwd = NativeStatus::Negative;
+    let mut maps = NativeStatus::Negative;
+    if process.recheck(deadline).is_err() { return (NativeStatus::Unknown, NativeStatus::Unknown); }
+    for (index, task) in process.tasks.iter().enumerate() {
+        if Instant::now() >= deadline {
+            cwd.merge(NativeStatus::Unknown); maps.merge(NativeStatus::Unknown); break;
+        }
+        let checked: io::Result<(NativeStatus, NativeStatus)> = (|| {
+            if process.task_departed(index, deadline)? { return Ok((NativeStatus::Negative, NativeStatus::Negative)); }
+            task.recheck(deadline)?;
+            let owned;
+            let coverage = match resources.and_then(|resources| resources.get(index))
+                .and_then(Option::as_ref).and_then(|references| references.mounted.as_ref()) {
+                Some(coverage) => coverage,
+                None => { owned = candidates.capture_mounts(&task.scope, deadline)?; &owned }
+            };
+            let current_cwd = (|| {
+                let held = Held::pin(format!("{}/cwd", scope_path(&task.scope)), deadline)?;
+                qualify_object(&held)?;
+                let status = NativeStatus::from_match(candidates.matches_with_coverage(&held.file,
+                    &task.scope, ReferenceKind::Cwd, Some(coverage), deadline)?);
+                held.recheck(format!("{}/cwd", scope_path(&task.scope)), deadline)?;
+                Ok::<_, io::Error>(status)
+            })().unwrap_or(NativeStatus::Unknown);
+            let current_maps = (|| {
+                let names = mapping_names(&task.mapping_scope, deadline)?;
+                let mut status = NativeStatus::Negative;
+                for name in &names {
+                    let path = format!("{}/map_files/{name}", scope_path(&task.mapping_scope));
+                    let held = Held::pin(&path, deadline)?;
+                    qualify_object(&held)?;
+                    status.merge(NativeStatus::from_match(candidates.matches_with_coverage(&held.file,
+                        &task.scope, ReferenceKind::Map, Some(coverage), deadline)?));
+                    held.recheck(&path, deadline)?;
+                }
+                if mapping_names(&task.mapping_scope, deadline)? != names {
+                    return Err(io::Error::other("diagnostic mappings did not close"));
+                }
+                Ok::<_, io::Error>(status)
+            })().unwrap_or(NativeStatus::Unknown);
+            coverage.recheck(candidates, deadline)?;
+            task.recheck(deadline)?;
+            Ok((current_cwd, current_maps))
+        })();
+        match checked {
+            Ok((actual_cwd, actual_maps)) => { cwd.merge(actual_cwd); maps.merge(actual_maps); }
+            Err(_) => { cwd.merge(NativeStatus::Unknown); maps.merge(NativeStatus::Unknown); }
+        }
+    }
+    if process.recheck(deadline).is_err() {
+        cwd.merge(NativeStatus::Unknown); maps.merge(NativeStatus::Unknown);
+    }
+    (cwd, maps)
+}
+pub struct Census<'a, 'nonce> {
     runtime: Option<Runtime>,
     processes: Vec<ObservedProcess>,
     self_role: &'a SelfRole,
@@ -23,6 +193,7 @@ pub struct Census<'a> {
     observation: protocol::Observation,
     aliases: AliasSeal,
     object_count: Cell<usize>,
+    survey: &'a RefCell<ProcessSurvey<'nonce>>,
 }
 struct ObservedProcess {
     scope: ProcessScope,
@@ -48,6 +219,7 @@ struct References {
     foreign: bool,
     memberships: Vec<MatchOutcome>,
     mounted: Option<MountCoverage>,
+    closing_mounts: Vec<MountCoverage>,
 }
 
 /// Retained until emission; task departure never waives positive alias proof.
@@ -211,6 +383,13 @@ fn append_matches(observation: &mut protocol::Observation, matches: &[super::can
         *total += 1;
     }
 }
+fn reference_kind(kind: ResourceKind) -> ReferenceKind {
+    match kind {
+        ResourceKind::Root => ReferenceKind::Root, ResourceKind::Cwd => ReferenceKind::Cwd,
+        ResourceKind::Exe => ReferenceKind::Exe, ResourceKind::Fd => ReferenceKind::Fd,
+        ResourceKind::Map => ReferenceKind::Map,
+    }
+}
 impl References {
     fn collect(process: &ProcessScope, index: usize, request: &protocol::Request,
         candidates: &CandidateSet, store_client: Option<&Client>, management: bool,
@@ -221,6 +400,7 @@ impl References {
         if process.task_departed(index, deadline)? { return Ok(None); }
         let task = &process.tasks[index];
         let pid = &process.identity;
+        let mut closing_mounts = std::collections::BTreeMap::new();
         let pins = if management {
             let base = scope_path(&task.scope);
             let mapping_base = scope_path(&task.mapping_scope);
@@ -244,10 +424,15 @@ impl References {
             }
             Pins::Management(ManagementReferences { root, cwd, exe, descriptors, mappings })
         } else {
-            let mut prove_negative = |held: &Held, fresh: bool| {
+            let mut prove_negative = |proof_task: &TaskScope, held: &Held, kind: ResourceKind, fresh: bool| {
                 if fresh { charge_objects(object_count, 1)?; }
-                candidates.matches(&held.file, &task.scope, ReferenceKind::Fd, deadline)?
-                    .require_native_negative()
+                let coverage = match closing_mounts.entry(proof_task.identity.pid) {
+                    std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                    std::collections::btree_map::Entry::Vacant(entry) =>
+                        entry.insert(candidates.capture_mounts(&proof_task.scope, deadline)?),
+                };
+                candidates.matches_with_coverage(&held.file, &proof_task.scope, reference_kind(kind),
+                    Some(coverage), deadline)?.require_native_negative()
             };
             let Some(pins) = process.collect_resources(index, deadline, Some(&mut prove_negative))?
                 else { return Ok(None); };
@@ -309,22 +494,30 @@ impl References {
                 None, false, reference_count);
             Some(coverage)
         } else { None };
-        Ok(Some(Self { pins, foreign, memberships, mounted }))
+        for coverage in closing_mounts.values() { coverage.recheck(candidates, deadline)?; }
+        Ok(Some(Self { pins, foreign, memberships, mounted,
+            closing_mounts: closing_mounts.into_values().collect() }))
     }
 
     fn recheck(&self, process: &ProcessScope, index: usize, candidates: &CandidateSet,
         runtime: Option<&Runtime>, request: &protocol::Request,
-        store_client: Option<&Client>, object_count: &Cell<usize>, deadline: Instant) -> io::Result<()>
+        store_client: Option<&Client>, all_resources: &[Option<References>],
+        object_count: &Cell<usize>, deadline: Instant) -> io::Result<()>
     {
         let task = &process.tasks[index];
         let pid = process.identity.pid;
         let base = scope_path(&task.scope);
         let mapping_base = scope_path(&task.mapping_scope);
-        let mut prove_negative = |held: &Held, fresh: bool| {
+        let mut prove_negative = |proof_task: &TaskScope, held: &Held, kind: ResourceKind, fresh: bool| {
             if fresh { charge_objects(object_count, 1)?; }
-            candidates.recheck_matches(&held.file, &task.scope, ReferenceKind::Fd,
-                self.mounted.as_ref(), deadline)?.require_native_negative()
+            let proof_index = process.tasks.binary_search_by_key(&proof_task.identity.pid, |task| task.identity.pid)
+                .map_err(|_| io::Error::other("closing proof task not selected"))?;
+            let coverage = all_resources.get(proof_index).and_then(Option::as_ref)
+                .and_then(|resources| resources.mounted.as_ref());
+            candidates.recheck_matches(&held.file, &proof_task.scope, reference_kind(kind),
+                coverage, deadline)?.require_native_negative()
         };
+        for coverage in &self.closing_mounts { coverage.recheck(candidates, deadline)?; }
         match &self.pins {
             Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline, Some(&mut prove_negative))?,
             Pins::Management(pins) => {
@@ -379,6 +572,7 @@ impl References {
                 }
             }
         }
+        for coverage in &self.closing_mounts { coverage.recheck(candidates, deadline)?; }
         Ok(())
     }
 }
@@ -388,6 +582,7 @@ impl ObservedProcess {
         request: &protocol::Request, store_client: Option<&Client>, object_count: &Cell<usize>,
         deadline: Instant) -> io::Result<()> {
         self.scope.recheck(deadline)?;
+        let _phase = self.scope.resource_phase(deadline)?;
         let all_terminal = whole_group_terminal(&self.scope.tasks);
         if self.references.len() != self.scope.tasks.len() {
             return Err(io::Error::other("unobserved task resources"));
@@ -399,7 +594,7 @@ impl ObservedProcess {
             let checked: io::Result<()> = (|| {
                 task.recheck(deadline)?;
                 references.recheck(&self.scope, index, candidates, runtime, request, store_client,
-                    object_count, deadline)?;
+                    &self.references, object_count, deadline)?;
                 if let Some(runtime) = runtime {
                     runtime.scoped_task(self.scope.identity.pid, task.identity.pid, all_terminal, deadline)?;
                 }
@@ -411,7 +606,29 @@ impl ObservedProcess {
                 result => result?,
             }
         }
+        self.close_descriptors(candidates, object_count, false, deadline)?;
         self.scope.recheck(deadline)
+    }
+
+    fn close_descriptors(&self, candidates: &CandidateSet, object_count: &Cell<usize>,
+        collecting: bool, deadline: Instant) -> io::Result<()> {
+        let ordinary = self.references.iter().enumerate().filter_map(|(index, references)|
+            match references.as_ref().map(|references| &references.pins) {
+                Some(Pins::Ordinary(pins)) => Some((index, pins)), _ => None,
+            }).collect::<Vec<_>>();
+        let mut prove = |task: &TaskScope, held: &Held, kind: ResourceKind, fresh: bool| {
+            if fresh { charge_objects(object_count, 1)?; }
+            let index = self.scope.tasks.binary_search_by_key(&task.identity.pid, |task| task.identity.pid)
+                .map_err(|_| io::Error::other("unknown descriptor proof task"))?;
+            let coverage = self.references[index].as_ref().and_then(|references| references.mounted.as_ref());
+            let outcome = if collecting {
+                candidates.matches_with_coverage(&held.file, &task.scope, reference_kind(kind), coverage, deadline)?
+            } else {
+                candidates.recheck_matches(&held.file, &task.scope, reference_kind(kind), coverage, deadline)?
+            };
+            outcome.require_native_negative()
+        };
+        self.scope.finish_resource_phase(&ordinary, deadline, Some(&mut prove))
     }
 
     fn recheck_mounts(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
@@ -435,10 +652,10 @@ impl ObservedProcess {
         self.scope.recheck(deadline)
     }
 }
-impl<'a> Census<'a> {
+impl<'a, 'nonce> Census<'a, 'nonce> {
     pub fn collect(request: &'a protocol::Request, candidates: &CandidateSet,
         store_client: Option<&Client>, peer: &Peer, self_role: &'a SelfRole,
-        deadline: Instant) -> io::Result<Self>
+        survey: &'a RefCell<ProcessSurvey<'nonce>>, deadline: Instant) -> io::Result<Self>
     {
         deadline_check(deadline)?;
         self_role.recheck(deadline)?;
@@ -459,54 +676,86 @@ impl<'a> Census<'a> {
                 references: Vec::new(), unknown_reasons: Vec::new() });
         }
         let mut census = Self { runtime: None, processes: Vec::new(), self_role, request,
-            aliases: AliasSeal::default(), object_count: Cell::new(0),
+            aliases: AliasSeal::default(), object_count: Cell::new(0), survey,
             observation: protocol::Observation { complete: true, process_count: 0, task_count: 0,
                 roots, receipt: Vec::new() } };
         let pids = numbers("/proc", deadline)?;
+        survey.borrow_mut().discovered = Some(pids.len());
         let mut total_tasks = 0usize;
         let mut reference_count = 0usize;
         for pid in &pids {
-            // No unpinned process_gone shortcut: discovery churn is UNKNOWN.
-            let process = ProcessScope::discover(*pid, deadline)?;
-            let management = *pid == self_role.pid();
-            if management && process.tasks.len() != 1 {
-                return Err(io::Error::other("server management task set changed"));
-            }
-            total_tasks += process.tasks.len();
-            if total_tasks > TASK_LIMIT { return Err(io::Error::other("task census capacity")); }
-            let mut resources = Vec::with_capacity(process.tasks.len());
-            for index in 0..process.tasks.len() {
-                // Still inspect any root/cwd held by a proven no-mm task.
-                let captured = References::collect(&process, index, request, candidates,
-                    store_client, management, &mut census.runtime, &mut census.observation,
-                    &mut reference_count, &mut census.aliases, &census.object_count, deadline);
-                let references = match captured {
-                    Err(error) if error.kind() == io::ErrorKind::NotFound
-                        && process.task_departed(index, deadline)? => None,
-                    result => result?,
-                };
-                if let Some(references) = &references {
-                    charge_objects(&census.object_count, references.pins.root().iter().count()
-                        + references.pins.cwd().iter().count() + references.pins.exe().iter().count()
-                        + references.pins.descriptors().len() + references.pins.mappings().len())?;
+            if Instant::now() >= deadline { survey.borrow_mut().phase = "deadline"; break; }
+            let process = match ProcessScope::discover(*pid, deadline) {
+                Ok(process) => process,
+                Err(error) => {
+                    survey.borrow_mut().fail(*pid, None, "discover", &error, NativeStatus::Unknown, NativeStatus::Unknown);
+                    continue;
                 }
-                resources.push(references);
+            };
+            let management = *pid == self_role.pid();
+            total_tasks += process.tasks.len();
+            let captured: io::Result<Vec<Option<References>>> = (|| {
+                if management && process.tasks.len() != 1 {
+                    return Err(io::Error::other("server management task set changed"));
+                }
+                if total_tasks > TASK_LIMIT { return Err(io::Error::other("task census capacity")); }
+                let _phase = process.resource_phase(deadline)?;
+                let mut resources = Vec::with_capacity(process.tasks.len());
+                for index in 0..process.tasks.len() {
+                    let captured = References::collect(&process, index, request, candidates,
+                        store_client, management, &mut census.runtime, &mut census.observation,
+                        &mut reference_count, &mut census.aliases, &census.object_count, deadline);
+                    let references = match captured {
+                        Err(error) if error.kind() == io::ErrorKind::NotFound
+                            && process.task_departed(index, deadline)? => None,
+                        result => result?,
+                    };
+                    if let Some(references) = &references {
+                        let descriptor_pins = match &references.pins {
+                            Pins::Ordinary(pins) => pins.uncharged_descriptor_pin_count(),
+                            Pins::Management(pins) => pins.descriptors.len(),
+                        };
+                        charge_objects(&census.object_count, references.pins.root().iter().count()
+                            + references.pins.cwd().iter().count() + references.pins.exe().iter().count()
+                            + descriptor_pins + references.pins.mappings().len())?;
+                    }
+                    resources.push(references);
+                }
+                process.recheck(deadline)?;
+                Ok(resources)
+            })();
+            let process = match captured {
+                Ok(references) => ObservedProcess { scope: process, references },
+                Err(error) => {
+                    if candidates.retain_failed_task_view().is_err() { survey.borrow_mut().global_failure = true; }
+                    let (cwd, maps) = diagnostic_cwd_maps(&process, candidates, deadline, None);
+                    survey.borrow_mut().fail(*pid, Some(&process), "resources", &error, cwd, maps);
+                    continue;
+                }
+            };
+            let closed = (|| {
+                let _phase = process.scope.resource_phase(deadline)?;
+                process.close_descriptors(candidates, &census.object_count, true, deadline)
+            })();
+            if let Err(error) = closed {
+                let (cwd, maps) = diagnostic_cwd_maps(&process.scope, candidates, deadline, Some(&process.references));
+                survey.borrow_mut().fail(*pid, Some(&process.scope), "descriptor-close", &error, cwd, maps);
             }
-            // Discovery closes the complete group before resource capture.
-            // Close it again after every retained task slot has been collected;
-            // per-task resource checks never substitute for this sibling seal.
-            process.recheck(deadline)?;
-            census.processes.push(ObservedProcess { scope: process, references: resources });
+            census.processes.push(process);
         }
-        if numbers("/proc", deadline)? != pids {
-            return Err(io::Error::other("full process membership changed"));
+        match numbers("/proc", deadline) {
+            Ok(current) if current == pids => (),
+            _ => { survey.borrow_mut().global_failure = true; survey.borrow_mut().phase = "process-set"; }
         }
         census.observation.process_count = u32::try_from(census.processes.len())
             .map_err(|_| io::Error::other("process count overflow"))?;
         census.observation.task_count = u32::try_from(total_tasks)
             .map_err(|_| io::Error::other("task count overflow"))?;
         // Final reference closure may not grow this transaction's scope devices.
-        candidates.freeze_scope_devices(deadline)?;
+        if candidates.freeze_scope_devices(deadline).is_err() {
+            survey.borrow_mut().global_failure = true;
+            survey.borrow_mut().phase = "scope-freeze";
+        }
         census.recheck(candidates, store_client, deadline)?;
         for root in &mut census.observation.roots {
             if !root.complete || !root.references_complete { root.status = Status::Unknown; }
@@ -540,45 +789,68 @@ impl<'a> Census<'a> {
     }
 
     pub fn recheck(&self, candidates: &CandidateSet, store_client: Option<&Client>, deadline: Instant) -> io::Result<()> {
-        deadline_check(deadline)?;
-        match (&self.request.store, store_client) {
-            (Some(store), Some(client)) => client.recheck(store)?,
-            (None, None) => (),
-            _ => return Err(io::Error::other("store recheck authentication mismatch")),
+        let opening: io::Result<()> = (|| {
+            deadline_check(deadline)?;
+            match (&self.request.store, store_client) {
+                (Some(store), Some(client)) => client.recheck(store)?,
+                (None, None) => (),
+                _ => return Err(io::Error::other("store recheck authentication mismatch")),
+            }
+            self.self_role.recheck(deadline)?;
+            candidates.recheck(deadline)?;
+            self.recheck_selection(deadline)
+        })();
+        if opening.is_err() {
+            let mut survey = self.survey.borrow_mut();
+            survey.global_failure = true; survey.phase = "global-opening";
         }
-        self.self_role.recheck(deadline)?;
-        candidates.recheck(deadline)?;
-        self.recheck_selection(deadline)?;
         for process in &self.processes {
-            process.recheck(candidates, self.runtime.as_ref(), self.request, store_client,
-                &self.object_count, deadline)?;
+            if Instant::now() >= deadline { self.survey.borrow_mut().phase = "deadline"; break; }
+            let closed = process.recheck(candidates, self.runtime.as_ref(), self.request, store_client,
+                &self.object_count, deadline).and_then(|()| process.recheck_mounts(candidates, deadline));
+            match closed {
+                Ok(()) => self.survey.borrow_mut().prove(process.scope.identity.pid),
+                Err(error) => {
+                    let (cwd, maps) = diagnostic_cwd_maps(&process.scope, candidates, deadline, Some(&process.references));
+                    self.survey.borrow_mut().fail(process.scope.identity.pid, Some(&process.scope),
+                        "closure", &error, cwd, maps);
+                }
+            }
         }
-        // Departed-task shortcuts never waive retained mount contributions.
-        for process in &self.processes {
-            process.recheck_mounts(candidates, deadline)?;
+        let closing: io::Result<()> = (|| {
+            if let Some(runtime) = &self.runtime { runtime.recheck(deadline)?; }
+            self.recheck_selection(deadline)?;
+            candidates.recheck(deadline)?;
+            self.self_role.recheck(deadline)?;
+            if let (Some(store), Some(client)) = (&self.request.store, store_client) { client.recheck(store)?; }
+            self.aliases.recheck(deadline)?;
+            deadline_check(deadline)
+        })();
+        if closing.is_err() {
+            let mut survey = self.survey.borrow_mut();
+            survey.global_failure = true; survey.phase = "global-closing";
         }
-        if let Some(runtime) = &self.runtime { runtime.recheck(deadline)?; }
-        self.recheck_selection(deadline)?;
-        candidates.recheck(deadline)?;
-        self.self_role.recheck(deadline)?;
-        if let (Some(store), Some(client)) = (&self.request.store, store_client) { client.recheck(store)?; }
-        self.aliases.recheck(deadline)?;
-        deadline_check(deadline)
+        if self.survey.borrow().incomplete() {
+            return Err(io::Error::other("one or more processes or global seals remain unproven"));
+        }
+        self.survey.borrow_mut().phase = "complete";
+        Ok(())
     }
 
     pub fn into_observation(mut self) -> (protocol::Observation, AliasSeal) {
         let mut slots = 0;
         let mut pins = 0;
         let mut objects = 0;
+        let mut seen_snapshots = std::collections::BTreeSet::new();
         for process in &self.processes {
             for references in process.references.iter().flatten() {
                 objects += references.pins.root().iter().count() + references.pins.cwd().iter().count()
                     + references.pins.exe().iter().count() + references.pins.mappings().len();
                 if let Pins::Ordinary(resources) = &references.pins {
                     slots += resources.current_descriptor_count();
-                    let descriptor_pins = resources.descriptor_pin_count();
+                    let descriptor_pins = resources.unique_descriptor_pin_count(&mut seen_snapshots);
                     pins += descriptor_pins;
-                    objects += descriptor_pins;
+                    objects += descriptor_pins + resources.closing_non_descriptor_pin_count();
                 }
                 else {
                     objects += references.pins.descriptors().len();
@@ -758,6 +1030,56 @@ mod tests {
         stop_tx.send(()).unwrap();
         thread.join().unwrap();
         assert!(proof.recheck(deadline).is_err());
+    }
+
+    #[test]
+    fn incomplete_native_diagnostics_never_become_negative_or_complete() {
+        let mut status = NativeStatus::Negative;
+        status.merge(NativeStatus::Unknown);
+        status.merge(NativeStatus::Negative);
+        assert!(status == NativeStatus::Unknown);
+        status.merge(NativeStatus::Positive);
+        assert!(status == NativeStatus::Positive);
+        let survey = ProcessSurvey::new("00000000000000000000000000000000");
+        assert!(survey.incomplete(), "setup failure is not an empty fully surveyed host");
+        assert!(survey.discovered.is_none());
+    }
+
+    #[test]
+    #[ignore = "requires isolated Linux root with native process scope visibility"]
+    fn actual_independent_owned_process_failures_aggregate_without_hiding_unvisited() {
+        use std::process::{Child, Command, Stdio};
+        use std::time::Duration;
+        struct Owned(Child);
+        impl Drop for Owned {
+            fn drop(&mut self) { let _ = self.0.kill(); let _ = self.0.wait(); }
+        }
+        let mut workers = (0..4).map(|_| Owned(Command::new("sleep").arg("60")
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap()))
+            .collect::<Vec<_>>();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let scopes = workers.iter().map(|worker| ProcessScope::discover(worker.0.id(), deadline).unwrap())
+            .collect::<Vec<_>>();
+        let mut survey = ProcessSurvey::new("00000000000000000000000000000000");
+        survey.discovered = Some(scopes.len()); // Fourth owned process intentionally unvisited.
+        for index in 0..2 {
+            workers[index].0.kill().unwrap();
+            workers[index].0.wait().unwrap();
+            let failure = scopes[index].recheck(deadline).unwrap_err();
+            survey.fail(scopes[index].identity.pid, Some(&scopes[index]), "closure", &failure,
+                NativeStatus::Unknown, NativeStatus::Unknown);
+            // A second phase failing for the same TGID is not a second process.
+            survey.fail(scopes[index].identity.pid, Some(&scopes[index]), "mounts", &failure,
+                NativeStatus::Unknown, NativeStatus::Unknown);
+        }
+        scopes[2].recheck(deadline).unwrap();
+        survey.prove(scopes[2].identity.pid);
+        assert_eq!(survey.visited.len(), 3);
+        assert_eq!(survey.proven.len(), 1);
+        assert_eq!(survey.failed.len(), 2);
+        assert_eq!(survey.discovered.unwrap() - survey.visited.len(), 1);
+        assert!(survey.incomplete());
+        assert!(!survey.truncated);
     }
 
 }

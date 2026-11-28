@@ -134,6 +134,7 @@ pub struct CandidateSet {
     witness: RefCell<Option<ShmemWitness>>,
     // Captured once per task, then moved into its retained MountCoverage.
     native_view: RefCell<Option<CandidateView>>,
+    failed_views: RefCell<Vec<CandidateView>>,
 }
 
 fn bound(deadline: Instant) -> io::Result<()> {
@@ -247,7 +248,18 @@ impl CandidateSet {
         let enrolled_view = CandidateView::capture(&self_task, &scopes, &namespace_cache, deadline)?;
         let scope_ledger = RefCell::new(ScopeLedger::new(devices.clone(), &enrolled_view));
         Ok(Self { kind: request.kind, uid, roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger,
-            witness: RefCell::new(None), store_inventory: RefCell::new(None), native_view: RefCell::new(None) })
+            witness: RefCell::new(None), store_inventory: RefCell::new(None), native_view: RefCell::new(None),
+            failed_views: RefCell::new(Vec::new()) })
+    }
+
+    /// Preserve, rather than silently discard, an interrupted task's registered
+    /// view while the fail-closed census surveys the remaining processes.
+    pub fn retain_failed_task_view(&self) -> io::Result<()> {
+        if let Some(view) = self.native_view.borrow_mut().take() {
+            self.failed_views.borrow_mut().push(view);
+            self.scope_ledger.borrow_mut().retain()?;
+        }
+        Ok(())
     }
 
     pub fn len(&self) -> usize { self.roots.len() }
@@ -267,6 +279,7 @@ impl CandidateSet {
         self.enrolled_view.recheck(deadline)?;
         if let Some(witness) = self.witness.borrow().as_ref() { witness.recheck()?; }
         if let Some(view) = self.native_view.borrow().as_ref() { view.recheck(deadline)?; }
+        for view in self.failed_views.borrow().iter() { view.recheck(deadline)?; }
         let self_task = objects::pin_magic("/proc/self")?;
         for (root, scope) in self.roots.iter().zip(&self.scopes) {
             bound(deadline)?;
@@ -362,6 +375,14 @@ impl CandidateSet {
         coverage: Option<&MountCoverage>, deadline: Instant) -> io::Result<MatchOutcome>
     {
         self.scope_ledger.borrow().require_frozen()?;
+        self.matches_with_coverage(file, task_scope, kind, coverage, deadline)
+    }
+
+    /// Match in an explicitly retained task view during collection or closure.
+    /// Unlike the single-task collection cache, this supports process-wide
+    /// closing proof without assuming sibling resource contexts are shared.
+    pub fn matches_with_coverage(&self, file: &File, task_scope: &File, kind: ReferenceKind,
+        coverage: Option<&MountCoverage>, deadline: Instant) -> io::Result<MatchOutcome> {
         let native = match self.prepare_match(file, kind, deadline)? {
             PreparedMatch::Complete(outcome) => return Ok(outcome),
             PreparedMatch::Native(native) => native,
@@ -535,7 +556,8 @@ mod tests {
         let scope_ledger = RefCell::new(ScopeLedger::new(devices.clone(), &enrolled_view));
         CandidateSet { kind: Kind::Worktree, uid: roots[0].root.metadata().unwrap().uid(),
             roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger, witness: RefCell::new(None),
-            store_inventory: RefCell::new(None), native_view: RefCell::new(None) }
+            store_inventory: RefCell::new(None), native_view: RefCell::new(None),
+            failed_views: RefCell::new(Vec::new()) }
     }
 
     #[test]
@@ -670,7 +692,8 @@ mod tests {
         worker.command("toggle");
         let mut fresh_pins = 0;
         {
-            let mut proof = |held: &Held, fresh: bool| {
+            let mut proof = |_: &worktree_holder_proc::scopes::TaskScope, held: &Held,
+                _: worktree_holder_proc::scopes::ResourceKind, fresh: bool| {
                 if fresh { fresh_pins += 1; }
                 prove(held)
             };
@@ -701,7 +724,8 @@ mod tests {
         worker.command("drop-candidate");
         assert_eq!(Held::pin(format!("/proc/{}/fd/{candidate_fd}", worker.child.id()),
             deadline()).err().unwrap().kind(), io::ErrorKind::NotFound);
-        let mut proof = |held: &Held, _: bool| prove(held);
+        let mut proof = |_: &worktree_holder_proc::scopes::TaskScope, held: &Held,
+            _: worktree_holder_proc::scopes::ResourceKind, _: bool| prove(held);
         let error = process.recheck_resources(index, &positive, deadline(), Some(&mut proof)).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(error.to_string(), "changing descriptor lacks native negative proof");
@@ -719,7 +743,8 @@ mod tests {
         worker.command("toggle");
         let mut changes = 0;
         {
-            let mut proof = |held: &Held, fresh: bool| {
+            let mut proof = |_: &worktree_holder_proc::scopes::TaskScope, held: &Held,
+                _: worktree_holder_proc::scopes::ResourceKind, fresh: bool| {
                 prove(held)?;
                 if fresh && held.identity == trigger.identity {
                     worker.command("toggle");
@@ -729,9 +754,11 @@ mod tests {
             };
             let error = process.recheck_resources(index, &unstable, deadline(), Some(&mut proof)).unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::Other);
-            assert_eq!(error.to_string(), "descriptor stable-pair budget exhausted");
+            assert_eq!(error.to_string(), "process closing pass budget exhausted");
         }
-        assert_eq!(changes, 4, "original snapshot plus four recaptures is the five-pass bound");
+        assert!(changes >= 4, "the original five-pass repair must run before process fallback");
+        assert!(changes <= 4 + 3 * (process.descriptor_class_count() + 4),
+            "fallback retains the three full-process passes and original four recaptures per failed pair");
         process.recheck(deadline()).unwrap();
     }
 
