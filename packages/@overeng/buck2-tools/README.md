@@ -276,6 +276,12 @@ The signal fixtures use OS `SIGTERM` and explicitly gated copy cleanup.
 Publishers join active child closes before returning; native signal failures
 take precedence over concurrent abort notifications.
 
+Shared native-owner checks follow the pinned daemon's project-root rules.
+Notification-only supervision observes readiness without owning its lock;
+the production CLI retains legacy locking until the atomic caller migration.
+Interruption handlers are installed before creating a child session; an
+interrupted launch still joins group termination and escalation before returning.
+
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then
 removes the staged sources; the installed launcher retains only the native library
@@ -301,6 +307,8 @@ The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
 Native evidence fixtures confine hostile PATH/BUN_BIN environments to tracked child
 process groups; timeout cleanup joins the group before removing its inputs.
+The compiled Genie staging fixture also compiles inside its owned temporary root.
+This keeps Bun's transient compiler files out of parallel full-checkout parity snapshots.
 Incomplete hostless cases retain private VM/import/production/result phases, bounded
 redacted child output and native-argument/result/shard census before and after cleanup.
 Only cases completing every existing assertion remove their fixture. The explicit
