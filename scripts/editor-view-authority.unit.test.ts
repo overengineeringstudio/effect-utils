@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 import { spawn } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer, type Socket } from 'node:net'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
@@ -483,3 +487,140 @@ it('consumes a real child notification descriptor exactly once before descendant
     }
   }
 }, 15000)
+
+it.each(['changed-since', 'git-census', 'buck-census'] as const)(
+  'joins cancellation of the real CLI %s child before exit',
+  async (phase) => {
+    for (const [signal, status] of [
+      ['SIGHUP', 129],
+      ['SIGINT', 130],
+      ['SIGTERM', 143],
+    ] as const) {
+      const root = realpathSync(mkdtempSync(join(homedir(), 'editor-authority-cancel-')))
+      const connected = Promise.withResolvers<Socket>()
+      const server = createServer(connected.resolve)
+      let socket: Socket | undefined
+      try {
+        const listening = Promise.withResolvers<void>()
+        server.once('error', listening.reject)
+        server.listen(0, '127.0.0.1', listening.resolve)
+        await listening.promise
+        const address = server.address()
+        if (address === null || typeof address === 'string') throw new Error('missing fixture port')
+        const manifests = editorViewPackagePaths.map((path) =>
+          path === '.' ? 'package.json' : `${path}/package.json`,
+        )
+        const tool = `#!${process.execPath}
+import { connect } from 'node:net';
+const phase = process.env.EDITOR_AUTHORITY_CANCEL_PHASE;
+const current = process.argv[2] === 'diff' ? 'changed-since' :
+  process.argv[1].endsWith('/git') ? 'git-census' : 'buck-census';
+if (current !== phase) {
+  if (current !== 'git-census') throw new Error('unexpected fixture command: ' + current);
+  process.stdout.write(${JSON.stringify(`${manifests.join('\0')}\0`)});
+} else {
+  const socket = connect(Number(process.env.EDITOR_AUTHORITY_CANCEL_PORT), '127.0.0.1');
+  process.on('SIGTERM', () => socket.write('cleanup-start\\n'));
+  const connected = Promise.withResolvers();
+  socket.once('connect', connected.resolve).once('error', connected.reject);
+  await connected.promise;
+  const released = Promise.withResolvers();
+  socket.once('data', released.resolve).once('close', released.resolve);
+  socket.write('ready\\n');
+  await released.promise;
+  if (socket.destroyed === false) socket.end();
+}
+`
+        for (const name of ['git', 'buck2']) writeFileSync(join(root, name), tool, { mode: 0o700 })
+        mkdirSync(join(root, '.devenv'))
+        const output = join(root, '.devenv', 'authority.json')
+        writeFileSync(output, 'prior-authority\n')
+        const args = [
+          join(dirname(fileURLToPath(import.meta.url)), 'editor-view-authority.ts'),
+          phase === 'changed-since' ? 'publish' : 'authority',
+          '--repo-root',
+          root,
+          '--workspace-root',
+          root,
+          '--cell',
+          'workspace_cell',
+          '--buck2',
+          join(root, 'buck2'),
+          '--git',
+          join(root, 'git'),
+          '--output',
+          output,
+        ]
+        if (phase === 'changed-since')
+          args.push(
+            '--changed-since',
+            'HEAD',
+            '--publisher',
+            join(root, 'publisher.ts'),
+            '--cp',
+            join(root, 'cp'),
+            '--mv',
+            join(root, 'mv'),
+            '--fingerprint-tool',
+            '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-x/bin/buck2-fingerprint',
+            '--snapshot-retention',
+            '3',
+          )
+        const child = spawn(process.execPath, args, {
+          cwd: root,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: {
+            ...process.env,
+            EDITOR_AUTHORITY_CANCEL_PHASE: phase,
+            EDITOR_AUTHORITY_CANCEL_PORT: String(address.port),
+            EDITOR_VIEW_PACKAGES: undefined,
+            EDITOR_VIEW_ADMISSION_READY_FD: undefined,
+          },
+          timeout: 5000,
+          killSignal: 'SIGKILL',
+        })
+        const closed = Promise.withResolvers<{
+          code: number | null
+          signal: NodeJS.Signals | null
+        }>()
+        let finished = false
+        let diagnostics = ''
+        child.once('error', closed.reject)
+        child.once('close', (code, signal) => {
+          finished = true
+          closed.resolve({ code, signal })
+        })
+        child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
+          diagnostics += chunk
+        })
+        try {
+          const prematureClose = closed.promise.then(() => {
+            throw new Error(`CLI closed before cleanup release: ${diagnostics}`)
+          })
+          socket = await Promise.race([connected.promise, prematureClose])
+          const lines = createInterface({ input: socket })[Symbol.asyncIterator]()
+          expect((await Promise.race([lines.next(), prematureClose])).value).toBe('ready')
+          expect(child.kill(signal)).toBe(true)
+          expect((await Promise.race([lines.next(), prematureClose])).value).toBe('cleanup-start')
+          expect(finished).toBe(false)
+          expect(readFileSync(output, 'utf8')).toBe('prior-authority\n')
+          socket.write('release\n')
+          expect(await closed.promise, diagnostics).toEqual({ code: status, signal: null })
+        } finally {
+          socket?.destroy()
+          child.kill('SIGKILL')
+          await closed.promise
+        }
+      } finally {
+        socket?.destroy()
+        if (server.listening === true) {
+          const stopped = Promise.withResolvers<void>()
+          server.close((error) => (error === undefined ? stopped.resolve() : stopped.reject(error)))
+          await stopped.promise
+        }
+        rmSync(root, { recursive: true, force: true })
+      }
+    }
+  },
+  15000,
+)

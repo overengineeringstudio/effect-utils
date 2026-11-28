@@ -1,5 +1,4 @@
 #!/usr/bin/env -S bun
-import { execFileSync } from 'node:child_process'
 import { closeSync, readFileSync, writeSync } from 'node:fs'
 import { constants } from 'node:os'
 import { join, posix } from 'node:path'
@@ -10,17 +9,18 @@ import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
 import {
   CommandFailure,
   reconcileBuckViews,
+  runCommand,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type {
   BuckReconcileTiming,
   BuckWatchPlan,
+  RunCommand,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import {
   editorPublicationIsolation,
   type EditorPublicationOwner,
 } from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import {
-  runEditorViewAuthorityCommand,
   writeEditorViewAuthority,
   type EditorViewAuthorityCommandRunner,
 } from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
@@ -105,7 +105,10 @@ export const ownedEditorViewAuthorityCommandRunner =
     signal,
   }: OwnedEditorViewAuthorityOptions): EditorViewAuthorityCommandRunner =>
   async (command) => {
-    if (command.command !== buck2) return runEditorViewAuthorityCommand(command)
+    if (command.command !== buck2) {
+      const result = await runCommand({ ...command, signal })
+      return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
+    }
     const result = await runManagedEditorPublicationCommand({
       command: {
         ...command,
@@ -439,6 +442,7 @@ const parseCli = (args: readonly string[]) => {
     '--workspace-root',
     '--cell',
     '--buck2',
+    '--buck2-native',
     '--git',
     '--output',
     '--publisher',
@@ -459,6 +463,7 @@ const parseCli = (args: readonly string[]) => {
     workspaceRoot: get('--workspace-root'),
     cell: get('--cell'),
     buck2: get('--buck2'),
+    buck2Native: values.get('--buck2-native') ?? '',
     git: get('--git'),
     output: get('--output'),
     publisher: admitting === true ? get('--publisher') : '',
@@ -471,56 +476,27 @@ const parseCli = (args: readonly string[]) => {
   }
 }
 
-const main = async (): Promise<void> => {
-  const options = parseCli(process.argv.slice(2))
-  if (
-    Number.isInteger(options.snapshotRetention) === false ||
-    options.snapshotRetention < 2 ||
-    options.snapshotRetention > 32
-  )
-    fail('--snapshot-retention must be an integer from 2 through 32')
-  const authorityPackagePaths = editorViewPackagePaths
-  let serializedPublicationPackages = options.publicationPackages
-  if (options.changedSince !== undefined) {
-    if (options.command !== 'publish') fail('--changed-since is only valid with publish')
-    serializedPublicationPackages = options.publicationPackages ?? process.env.EDITOR_VIEW_PACKAGES
-    if (serializedPublicationPackages === undefined) {
-      const changed = execFileSync(
-        options.git,
-        ['diff', '--name-only', '-z', options.changedSince, '--'],
-        { cwd: options.repoRoot, encoding: 'utf8' },
-      )
-        .split('\0')
-        .filter((entry) => entry.length > 0)
-      const selected = changedEditorConsumers({
-        changed,
-        packagePaths: authorityPackagePaths,
-        readDependencies: () =>
-          workspaceEditorDependencies({
-            serialized: readFileSync(join(options.repoRoot, 'pnpm-lock.yaml'), 'utf8'),
-            rootBuck: readFileSync(join(options.repoRoot, 'BUCK'), 'utf8'),
-          }),
-      })
-      if (selected.length === 0) {
-        process.stdout.write(
-          'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
-        )
-        return
-      }
-      serializedPublicationPackages = JSON.stringify(selected)
-    }
-  }
-  const packageScope = resolveEditorViewPackageScope({
-    command: options.command,
-    authorityPackagePaths,
-    serializedPublicationPackages,
-  })
+/** Execute the resolved operation independently of literal CLI argument selection. */
+const executeSelectedEditorViewOperation = async ({
+  options,
+  packageScope,
+  run,
+  authorityCommandRunner,
+  signal,
+}: {
+  readonly options: ReturnType<typeof parseCli>
+  readonly packageScope: ReturnType<typeof resolveEditorViewPackageScope>
+  readonly run: RunCommand
+  readonly authorityCommandRunner: EditorViewAuthorityCommandRunner
+  readonly signal: AbortSignal
+}): Promise<void> => {
   // Scope only target construction and publication. Every publisher still refreshes and passes
   // freshly proven whole-workspace authority to each selected package view.
   const authorityStartedAt = performance.now()
   const authority = await writeEditorViewAuthority({
     ...options,
     requiredPackages: packageScope.authorityPackagePaths,
+    runCommand: authorityCommandRunner,
   })
   reportTiming({
     phase: 'authority',
@@ -547,6 +523,8 @@ const main = async (): Promise<void> => {
     },
     options: {
       plan,
+      run,
+      signal,
       mode: options.command === 'check' ? 'check' : 'publish',
       repoRoot: options.repoRoot,
       workspaceRoot: options.workspaceRoot,
@@ -571,10 +549,68 @@ const main = async (): Promise<void> => {
   process.stdout.write(`${action} ${plan.packages.length} editor views\n`)
 }
 
+const main = async (signal: AbortSignal): Promise<void> => {
+  const notifyPublicationAdmission = takePublicationAdmissionNotification()
+  const options = parseCli(process.argv.slice(2))
+  if (
+    Number.isInteger(options.snapshotRetention) === false ||
+    options.snapshotRetention < 2 ||
+    options.snapshotRetention > 32
+  )
+    fail('--snapshot-retention must be an integer from 2 through 32')
+  const authorityPackagePaths = editorViewPackagePaths
+  let serializedPublicationPackages = options.publicationPackages
+  if (options.changedSince !== undefined) {
+    if (options.command !== 'publish') fail('--changed-since is only valid with publish')
+    serializedPublicationPackages = options.publicationPackages ?? process.env.EDITOR_VIEW_PACKAGES
+    if (serializedPublicationPackages === undefined) {
+      const result = await runCommand({
+        command: options.git,
+        args: ['diff', '--name-only', '-z', options.changedSince, '--'],
+        cwd: options.repoRoot,
+        signal,
+      })
+      const changed = result.stdout.split('\0').filter((entry) => entry.length > 0)
+      const selected = changedEditorConsumers({
+        changed,
+        packagePaths: authorityPackagePaths,
+        readDependencies: () =>
+          workspaceEditorDependencies({
+            serialized: readFileSync(join(options.repoRoot, 'pnpm-lock.yaml'), 'utf8'),
+            rootBuck: readFileSync(join(options.repoRoot, 'BUCK'), 'utf8'),
+          }),
+      })
+      if (selected.length === 0) {
+        notifyPublicationAdmission('no-publication')
+        process.stdout.write(
+          'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
+        )
+        return
+      }
+      serializedPublicationPackages = JSON.stringify(selected)
+    }
+  }
+  const packageScope = resolveEditorViewPackageScope({
+    command: options.command,
+    authorityPackagePaths,
+    serializedPublicationPackages,
+  })
+  await executeSelectedEditorViewOperation({
+    options,
+    packageScope,
+    signal,
+    run: runCommand,
+    authorityCommandRunner: async (command) => {
+      const result = await runCommand({ ...command, signal })
+      return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
+    },
+  })
+}
+
 if (import.meta.main === true)
   try {
-    await main()
+    await withPublicationCancellation({ run: main })
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
-    process.exitCode = 1
+    if (process.exitCode === undefined || process.exitCode === 0) process.exitCode = 1
   }
