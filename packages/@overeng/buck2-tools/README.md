@@ -307,6 +307,8 @@ The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
 Native evidence fixtures confine hostile PATH/BUN_BIN environments to tracked child
 process groups; timeout cleanup joins the group before removing its inputs.
+The compiled Genie staging fixture also compiles inside its owned temporary root.
+This keeps Bun's transient compiler files out of parallel full-checkout parity snapshots.
 Incomplete hostless cases retain private VM/import/production/result phases, bounded
 redacted child output and native-argument/result/shard census before and after cleanup.
 Only cases completing every existing assertion remove their fixture. The explicit

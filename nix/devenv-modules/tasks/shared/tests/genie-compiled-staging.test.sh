@@ -64,8 +64,14 @@ fi
 
 echo "Test 1: compiled Genie generates output and exits"
 (
-  cd "$ROOT"
-  bun build packages/@overeng/genie/bin/genie.tsx --compile --no-tree-shaking --outfile "$compiled_genie" >/dev/null
+  # Bun creates transient compiler files in cwd even with an absolute outfile.
+  # Keep those files out of concurrent full-checkout parity snapshots.
+  cd "$tmpdir"
+  if [ "$(pwd -P)" != "$tmpdir" ]; then
+    echo "Compiler escaped its owned fixture directory" >&2
+    exit 1
+  fi
+  bun build "$ROOT/packages/@overeng/genie/bin/genie.tsx" --compile --no-tree-shaking --outfile "$compiled_genie" >/dev/null
 )
 
 for _ in 1 2 3; do
