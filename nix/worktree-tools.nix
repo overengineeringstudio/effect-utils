@@ -79,7 +79,7 @@ let
     git_local_env="$(${pkgs.git}/bin/git rev-parse --local-env-vars)"
     while IFS= read -r variable; do unset "$variable"; done <<< "$git_local_env"
     export WORKTREE_GIT=${pkgs.git}/bin/git
-    generation="$(${pkgs.python3}/bin/python3 ${publication} check @tools@)"
+    generation="$(${pkgs.python3}/bin/python3 -P ${publication} check @tools@)"
     export WORKSPACE_ROOT="$(${pkgs.coreutils}/bin/dirname "$(${pkgs.coreutils}/bin/dirname "$generation")")"
     export WORKSPACE_ROOT="$(${pkgs.coreutils}/bin/dirname "$WORKSPACE_ROOT")"
     IFS=: read -ra inherited_path <<< "''${PATH:-}"

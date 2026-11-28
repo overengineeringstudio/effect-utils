@@ -341,6 +341,7 @@ rec {
                   events = capabilityPackages.buck2-events;
                   otelSpan = ciTestShellProducts.otel-span;
                 };
+                WORKTREE_TEST_LAUNCHER = "${self.packages.${system}.worktree-tools}/bin/buck2";
               }
               ''
                 export HOME="$TMPDIR/home"
