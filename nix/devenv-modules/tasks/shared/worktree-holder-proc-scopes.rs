@@ -505,28 +505,55 @@ impl ProcessScope {
         Ok(captured)
     }
 
-    fn recheck_file_classes(&self, deadline: Instant) -> io::Result<()> {
-        for class in &self.file_classes {
-            if class.members.len() == 1 { continue; }
-            let representative = &self.tasks[class.representative];
-            for index in &class.members {
-                if *index == class.representative { continue; }
-                deadline_check(deadline)?;
-                match linux::same_files(representative.identity.pid, self.tasks[*index].identity.pid) {
-                    Ok(true) => (),
-                    Err(error) if error.raw_os_error() == Some(3)
-                        && self.task_departed(*index, deadline)? => (),
-                    Err(error) => return Err(error),
-                    Ok(false) => return Err(io::Error::other(DescriptorInstability::ClassMembership)),
-                }
+    fn recheck_file_class(&self, class: &FileClass, deadline: Instant) -> io::Result<()> {
+        if class.members.len() == 1 { return Ok(()); }
+        let representative = &self.tasks[class.representative];
+        for index in &class.members {
+            if *index == class.representative { continue; }
+            deadline_check(deadline)?;
+            match linux::same_files(representative.identity.pid, self.tasks[*index].identity.pid) {
+                Ok(true) => (),
+                Err(error) if error.raw_os_error() == Some(3)
+                    && self.task_departed(*index, deadline)? => (),
+                Err(error) => return Err(error),
+                Ok(false) => return Err(io::Error::other(DescriptorInstability::ClassMembership)),
             }
         }
         Ok(())
     }
 
+    fn recheck_file_classes(&self, deadline: Instant) -> io::Result<()> {
+        for class in &self.file_classes { self.recheck_file_class(class, deadline)?; }
+        Ok(())
+    }
+
+    /// Standalone task checks authenticate only the physical files class.
+    /// A sibling's native namespace/root authority still belongs to its own
+    /// logical task check and the caller's mandatory complete-group seals.
+    fn recheck_task_file_class(&self, index: usize, deadline: Instant) -> io::Result<()> {
+        let class = self.task_file_class.get(index).and_then(|class| self.file_classes.get(*class))
+            .ok_or_else(|| io::Error::other("unknown task descriptor class"))?;
+        for pass in 0..2 {
+            for member in &class.members {
+                if self.task_present(*member, deadline)?
+                    && process::uids(self.tasks[*member].identity.pid)? != self.tasks[*member].uids
+                { return Err(io::Error::other("descriptor class credentials changed")); }
+            }
+            if pass == 0 { self.recheck_file_class(class, deadline)?; }
+        }
+        self.recheck_leader(deadline).map(|_| ())
+    }
+
+    /// Batch admission authenticates the entire retained process.
     pub fn resource_phase(&self, deadline: Instant) -> io::Result<ResourcePhase<'_>> {
         if self.resource_phase_active.get() { return Err(io::Error::other("nested process resource phase")); }
         self.recheck(deadline)?;
+        self.start_resource_phase(deadline)
+    }
+
+    fn start_resource_phase(&self, deadline: Instant) -> io::Result<ResourcePhase<'_>> {
+        deadline_check(deadline)?;
+        if self.resource_phase_active.get() { return Err(io::Error::other("nested process resource phase")); }
         self.resource_epoch.set(self.resource_epoch.get().checked_add(1)
             .ok_or_else(|| io::Error::other("process resource epoch exhausted"))?);
         self.fd_repair_passes.set(0);
@@ -535,7 +562,7 @@ impl ProcessScope {
     }
 
     fn ensure_resource_phase(&self, deadline: Instant) -> io::Result<Option<ResourcePhase<'_>>> {
-        if self.resource_phase_active.get() { Ok(None) } else { self.resource_phase(deadline).map(Some) }
+        if self.resource_phase_active.get() { Ok(None) } else { self.start_resource_phase(deadline).map(Some) }
     }
 
     /// Close each physical class once after every logical task context ran.
@@ -571,6 +598,34 @@ impl ProcessScope {
             }
         }
         self.recheck(deadline)
+    }
+
+    /// A standalone selected-task phase is not a complete-process census.
+    /// Reclose its FD pair after root/cwd/exe/maps, without checking unrelated
+    /// sibling namespaces. Real FD instability still invokes the full-process
+    /// closing witness and therefore cannot waive any changed sibling context.
+    fn finish_task_resource_phase(&self, index: usize, references: &References,
+        deadline: Instant, mut proof: Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
+        let finished = (|| {
+            self.recheck_task_file_class(index, deadline)?;
+            if !self.task_present(index, deadline)? { return Ok(()); }
+            references.table.sealed_epoch.set(0);
+            if let Err(error) = references.recheck_descriptors(&self.tasks[index], deadline,
+                &mut proof, self.resource_epoch.get(), &self.fd_repair_passes) {
+                if !references.table.missing.get() && descriptor_instability(&error).is_none() {
+                    return Err(error);
+                }
+                self.close_missing_descriptors(index, references, deadline, &mut proof)
+                    .map_err(descriptor_proof_error)?;
+            }
+            self.tasks[index].recheck(deadline)?;
+            self.recheck_task_file_class(index, deadline)
+        })();
+        match finished {
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+                && self.task_departed(index, deadline)? => Ok(()),
+            result => result,
+        }
     }
 
     pub fn descriptor_class_count(&self) -> usize { self.file_classes.len() }
@@ -700,6 +755,7 @@ impl ProcessScope {
     pub fn collect_resources(&self, index: usize, deadline: Instant,
         mut repair: Option<&mut NativeNegativeProof<'_>>) -> io::Result<Option<References>> {
         let _phase = self.ensure_resource_phase(deadline)?;
+        if _phase.is_some() { self.recheck_task_file_class(index, deadline)?; }
         let mut attempts = 0;
         loop {
             self.recheck_leader(deadline)?;
@@ -733,7 +789,7 @@ impl ProcessScope {
             match captured {
                 Ok(references) => {
                     if _phase.is_some() {
-                        self.finish_resource_phase(&[(index, &references)], deadline, repair)?;
+                        self.finish_task_resource_phase(index, &references, deadline, repair)?;
                     }
                     return Ok(Some(references));
                 }
@@ -755,6 +811,7 @@ impl ProcessScope {
     pub fn recheck_resources(&self, index: usize, references: &References,
         deadline: Instant, mut repair: Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
         let _phase = self.ensure_resource_phase(deadline)?;
+        if _phase.is_some() { self.recheck_task_file_class(index, deadline)?; }
         self.recheck_leader(deadline)?;
         if !self.task_present(index, deadline)? { return Ok(()); }
         let checked: io::Result<()> = (|| {
@@ -772,7 +829,7 @@ impl ProcessScope {
             self.recheck_leader(deadline).map(|_| ())
         })();
         if checked.is_ok() && _phase.is_some() {
-            self.finish_resource_phase(&[(index, references)], deadline, repair)?;
+            self.finish_task_resource_phase(index, references, deadline, repair)?;
         }
         match checked {
             Err(error) if error.kind() == io::ErrorKind::NotFound

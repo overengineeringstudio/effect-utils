@@ -211,6 +211,15 @@ resources, namespace and generation plus its leader before/after. They do not
 rescan every sibling for every task: callers must close the full process group
 before and after each resource phase. Production discovery and census group
 seals enforce that obligation, including all final selection/resource closure.
+Standalone task calls open a fresh bounded descriptor epoch, authenticate the
+selected task's actual files class (including member generations/credentials),
+and close its FD pair after its root/cwd/executable/maps checks. They do not
+admit or finalize a batch: an unrelated sibling namespace change can leave that
+selected task valid but must still veto `resource_phase`, `finish_resource_phase`
+and the caller's complete `ProcessScope::recheck`. Files-class equality never
+supplies another logical task's native namespace view. Any descriptor uncertainty
+that requires the full-process closing witness still requires every original
+task context and all complete-process seals; standalone calls cannot waive them.
 A currently authenticated live leader disproves whole-group termination without
 a sibling scan; terminal leaders retain the complete slow-path proof. No task,
 UID, resource, sibling namespace or final seal is omitted. The ignored real
