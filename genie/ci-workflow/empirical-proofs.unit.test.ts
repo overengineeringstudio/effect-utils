@@ -482,6 +482,7 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   expect(disconnectScript).toContain('for ((attempt=0; attempt<100; attempt++)); do')
   expect(disconnectScript).toContain('if ! sudo test -e "/proc/$daemon_pid/exe"; then')
   expect(disconnectScript).toContain('sudo tailscaled --cleanup')
+  expect(disconnectScript).toContain('rm -- "$XDG_RUNTIME_DIR/tailscaled.pid"')
   expect(disconnectScript).toContain('exit 1')
   expect(steps[writer]?.if).toContain("steps.occurrence-disconnect.outcome != 'failure'")
   const read = steps.find((step) => step.id === 'occurrence-query')!

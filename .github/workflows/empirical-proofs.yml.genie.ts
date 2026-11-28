@@ -230,6 +230,7 @@ export default ciWorkflow({
                 'for ((attempt=0; attempt<100; attempt++)); do',
                 '  if ! sudo test -e "/proc/$daemon_pid/exe"; then',
                 '    sudo tailscaled --cleanup',
+                '    rm -- "$XDG_RUNTIME_DIR/tailscaled.pid"',
                 '    exit 0',
                 '  fi',
                 '  sleep 0.1',

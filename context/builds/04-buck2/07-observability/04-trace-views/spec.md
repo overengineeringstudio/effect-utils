@@ -225,6 +225,8 @@ PID in a job-private runtime directory. Disconnect logs out, verifies and
 terminates only that parent's `tailscaled` child, waits at most ten seconds for
 its executable to be released, then cleans its routes. Failure blocks writer
 enrollment; no process-name-wide kill or reader/writer tag combination is used.
+The private PID file is retired after successful cleanup so the deferred reader
+post-action cannot target a reused parent PID.
 Configure repository variables
 `TS_OCCURRENCE_READ_CLIENT_ID`, `TS_OCCURRENCE_READ_AUDIENCE`,
 `BUCK2_OCCURRENCE_READ_URL` (proxy query-range endpoint, without a query string),
