@@ -67,6 +67,129 @@ const inventoryEntries = (tree: BlockTree): readonly BlockInventoryEntry[] => {
   return entries
 }
 
+/**
+ * Check native type coverage independently of endpoint flags. Counts prevent a
+ * surviving construct from hiding another flattened construct of the same type.
+ * This does not claim full attribute equivalence.
+ */
+const classifyRenderedTypes = (opts: {
+  readonly tree: BlockTree
+  readonly renderedMarkdown: string
+  readonly completeness: BodyCompleteness
+}): BodyCompleteness => {
+  const requirements = new Map<string, { count: number; types: Set<string> }>()
+  const unsupportedTypes = new Set<string>()
+  const requireTag = ({ tag, type }: { readonly tag: string; readonly type: string }): void => {
+    const requirement = requirements.get(tag)
+    if (requirement === undefined) requirements.set(tag, { count: 1, types: new Set([type]) })
+    else {
+      requirement.count += 1
+      requirement.types.add(type)
+    }
+  }
+  const visitRichText = ({
+    value,
+    type,
+  }: {
+    readonly value: unknown
+    readonly type: string
+  }): void => {
+    if (value === null || typeof value !== 'object') return
+    if (Array.isArray(value) === true) {
+      for (const item of value) visitRichText({ value: item, type })
+      return
+    }
+    if ('type' in value && value.type === 'mention' && 'mention' in value) {
+      const mention = value.mention
+      if (mention !== null && typeof mention === 'object' && 'type' in mention) {
+        if (
+          mention.type === 'page' ||
+          mention.type === 'database' ||
+          mention.type === 'date' ||
+          mention.type === 'user'
+        ) {
+          requireTag({ tag: `mention-${mention.type}`, type })
+        } else if (mention.type !== 'link_mention' && mention.type !== 'link_preview') {
+          unsupportedTypes.add(type)
+          unsupportedTypes.add(
+            `mention:${typeof mention.type === 'string' ? mention.type : 'unknown'}`,
+          )
+        }
+      }
+    }
+    for (const child of Object.values(value)) visitRichText({ value: child, type })
+  }
+  const visit = (tree: BlockTree): void => {
+    for (const node of tree) {
+      const type = node.block.type
+      if (NotionMarkdown.supportsBlockType(type) === false) unsupportedTypes.add(type)
+      if (type === 'callout' && 'callout' in node.block) {
+        const callout = node.block.callout
+        if (callout !== null && typeof callout === 'object' && 'icon' in callout) {
+          const icon = callout.icon
+          if (
+            icon !== null &&
+            typeof icon === 'object' &&
+            'type' in icon &&
+            icon.type !== 'emoji'
+          ) {
+            unsupportedTypes.add(type)
+          }
+        }
+      }
+      if (
+        type === 'callout' ||
+        type === 'table' ||
+        type === 'video' ||
+        type === 'audio' ||
+        type === 'file' ||
+        type === 'pdf'
+      )
+        requireTag({ tag: type, type })
+      if (type === 'table_row') requireTag({ tag: 'tr', type })
+      if (type === 'toggle') requireTag({ tag: 'details', type })
+      visitRichText({ value: node.block, type })
+      visit(node.children)
+    }
+  }
+  visit(opts.tree)
+  // Code examples cannot supply evidence that a real construct survived.
+  const body = opts.renderedMarkdown
+    .replace(/^([ \t]*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\2[ \t]*$/gmu, '')
+    .replace(/(`+)[^\n]*?\1/gu, '')
+  const counts = new Map<string, number>()
+  for (const match of body.matchAll(
+    /<(callout|table|tr|details|video|audio|file|pdf|mention-page|mention-database|mention-date|mention-user)(?=[\s/>])/gu,
+  )) {
+    const tag = match[1]!
+    counts.set(tag, (counts.get(tag) ?? 0) + 1)
+  }
+  const missingTypes = new Set<string>()
+  for (const [tag, requirement] of requirements) {
+    if ((counts.get(tag) ?? 0) < requirement.count) {
+      for (const type of requirement.types) missingTypes.add(type)
+    }
+  }
+  if (missingTypes.size === 0 && unsupportedTypes.size === 0) return opts.completeness
+  return {
+    _tag: 'lossy',
+    reasons: [
+      ...new Set([
+        ...(opts.completeness._tag === 'lossy' ? opts.completeness.reasons : []),
+        ...(missingTypes.size === 0 ? [] : ['rendered_markdown_missing_types' as const]),
+        ...(unsupportedTypes.size === 0 ? [] : ['unsupported_blocks' as const]),
+      ]),
+    ],
+    lossyBlockTypes: [
+      ...new Set([
+        ...(opts.completeness._tag === 'lossy' ? (opts.completeness.lossyBlockTypes ?? []) : []),
+        ...missingTypes,
+        ...unsupportedTypes,
+      ]),
+    ].toSorted(),
+  }
+}
+
 /** Builds an observation from already-fetched markdown + block-tree snapshots; canonicalizes the rendered body once so evidence, classifier, and fingerprint see identical bytes (decision 0019). */
 export const observeFromSnapshots = Effect.fn('NotionBody.observeFromSnapshots')(function* (opts: {
   readonly pageId: string
@@ -96,7 +219,11 @@ export const observeFromSnapshots = Effect.fn('NotionBody.observeFromSnapshots')
     entries: inventoryEntries(opts.tree),
     renderedMarkdown,
   }
-  const completeness = classifyBodyCompleteness({ markdown, inventory })
+  const completeness = classifyRenderedTypes({
+    tree: opts.tree,
+    renderedMarkdown,
+    completeness: classifyBodyCompleteness({ markdown, inventory }),
+  })
   const observedAt = opts.observedAt ?? new Date().toISOString()
   const evidence = makeRemoteBodyObservationEvidence({
     pageId: opts.pageId,
@@ -165,4 +292,5 @@ const observeStable = (opts: {
 export const NotionBody = {
   observe,
   observeFromSnapshots,
+  classifyRenderedTypes,
 } as const

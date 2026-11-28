@@ -1142,7 +1142,15 @@ const requireImmutableTool = ({ tool, label }: { tool: string; label: string }):
 class EditorViewCommandFailure extends Error {
   readonly signal: NodeJS.Signals | undefined
 
-  constructor(message: string, signal: NodeJS.Signals | undefined, cause: unknown) {
+  constructor({
+    message,
+    signal,
+    cause,
+  }: {
+    readonly message: string
+    readonly signal: NodeJS.Signals | undefined
+    readonly cause: unknown
+  }) {
     super(message, { cause })
     this.signal = signal
   }
@@ -1152,21 +1160,6 @@ const activeCopies = new Set<ChildProcess>()
 let publicationInterrupted = false
 const requirePublicationRunning = (): void => {
   if (publicationInterrupted === true) fail('editor publication interrupted')
-}
-
-const nativeCommandSignal = (
-  error: unknown,
-  seen = new Set<unknown>(),
-): NodeJS.Signals | undefined => {
-  if (seen.has(error)) return undefined
-  seen.add(error)
-  if (error instanceof EditorViewCommandFailure) return error.signal
-  if (error instanceof AggregateError)
-    for (const failure of error.errors) {
-      const signal = nativeCommandSignal(failure, seen)
-      if (signal !== undefined) return signal
-    }
-  return error instanceof Error ? nativeCommandSignal(error.cause, seen) : undefined
 }
 
 const runTool = ({
@@ -1209,13 +1202,14 @@ const copyWithTool = ({
     activeCopies.delete(child)
     if (error !== null) {
       rejectCopy(
-        new EditorViewCommandFailure(
-          error.signal === null || error.signal === undefined
-            ? `editor view: ${label} failed with exit ${error.code ?? 'unknown'}: ${stderr.trim() || stdout.trim() || error.message}`
-            : `editor view: ${label} terminated by ${error.signal}`,
-          error.signal ?? undefined,
-          error,
-        ),
+        new EditorViewCommandFailure({
+          message:
+            error.signal === null || error.signal === undefined
+              ? `editor view: ${label} failed with exit ${error.code ?? 'unknown'}: ${stderr.trim() || stdout.trim() || error.message}`
+              : `editor view: ${label} terminated by ${error.signal}`,
+          signal: error.signal ?? undefined,
+          cause: error,
+        }),
       )
       return
     }
@@ -4522,6 +4516,24 @@ const parseCli = (args: readonly string[]): ParsedCli => {
   }
 }
 
+const nativeCommandSignal = ({
+  error,
+  seen = new Set<unknown>(),
+}: {
+  readonly error: unknown
+  readonly seen?: Set<unknown>
+}): NodeJS.Signals | undefined => {
+  if (seen.has(error) === true) return undefined
+  seen.add(error)
+  if (error instanceof EditorViewCommandFailure) return error.signal
+  if (error instanceof AggregateError)
+    for (const failure of error.errors) {
+      const signal = nativeCommandSignal({ error: failure, seen })
+      if (signal !== undefined) return signal
+    }
+  return error instanceof Error ? nativeCommandSignal({ error: error.cause, seen }) : undefined
+}
+
 const main = async (): Promise<void> => {
   process.once('SIGTERM', () => {
     publicationInterrupted = true
@@ -4640,7 +4652,7 @@ if (import.meta.main === true)
   try {
     await main()
   } catch (error) {
-    const signal = nativeCommandSignal(error)
+    const signal = nativeCommandSignal({ error })
     if (publicationInterrupted === false && signal !== undefined) {
       process.removeAllListeners(signal)
       process.kill(process.pid, signal)

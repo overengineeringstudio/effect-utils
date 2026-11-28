@@ -15,7 +15,7 @@ import {
   statSync,
   symlinkSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { CommandFailure, runCommand } from './buck-watch.ts'
@@ -40,7 +40,7 @@ const native = dlopen(ownerLibrary, {
   buck2_publication_owner_fd_flags: { args: ['i32'], returns: 'i32' },
 })
 const withRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-publication-owner-')))
+  const root = realpathSync(mkdtempSync(join(homedir(), 'editor-publication-owner-')))
   try {
     await run(root)
   } finally {
@@ -381,7 +381,7 @@ it(
                 pid = Number(match[1])
                 ready.resolve()
               }
-              if (diagnostics.includes('cleanup-start\n')) cleaning.resolve()
+              if (diagnostics.includes('cleanup-start\n') === true) cleaning.resolve()
             },
           }),
       }).then(

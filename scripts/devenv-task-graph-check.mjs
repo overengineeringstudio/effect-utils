@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeSync } from 'node:fs'
 import { posix } from 'node:path'
 
 const root = process.argv[2]
@@ -87,7 +87,23 @@ for (const [name, task] of tasks) {
 let testCount = 0
 const ok = ({ condition, name, detail = '' }) => {
   if (condition === false) {
-    console.error(`not ok ${testCount + 1} - ${name}${detail === '' ? '' : `: ${detail}`}`)
+    // stderr may share a nonblocking pipe with buffered stdout; drain before exit.
+    const diagnostic = Buffer.from(
+      `not ok ${testCount + 1} - ${name}${detail === '' ? '' : `: ${detail}`}\n`,
+    )
+    const pause = new Int32Array(new SharedArrayBuffer(4))
+    let offset = 0
+    while (offset < diagnostic.length) {
+      try {
+        const written = writeSync(2, diagnostic, offset, diagnostic.length - offset)
+        if (written === 0) throw new Error('task guard diagnostic write made no progress')
+        offset += written
+      } catch (error) {
+        if (error.code === 'EINTR') continue
+        if (error.code !== 'EAGAIN' && error.code !== 'EWOULDBLOCK') throw error
+        Atomics.wait(pause, 0, 0, 5)
+      }
+    }
     process.exit(1)
   }
   testCount += 1

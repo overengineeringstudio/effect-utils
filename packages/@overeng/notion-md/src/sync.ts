@@ -31,6 +31,7 @@ import { normalizeMarkdownLineEndings, sha256Digest, stripChildAnchors } from '.
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 import {
   NotionMdGateway,
+  remoteMarkdownCompleteness,
   type PageMetadataUpdate,
   type PullPageResult,
   type RemoteMarkdownSnapshot,
@@ -518,8 +519,8 @@ const assertRemoteMarkdownComplete = (opts: {
    */
   readonly allowChildPageBlocks?: boolean
 }): Effect.Effect<void, NmdRemoteBodyLossyError> => {
-  const raw = opts.markdown.completeness
-  if (raw === undefined || raw._tag === 'complete') return Effect.void
+  const raw = remoteMarkdownCompleteness(opts.markdown)
+  if (raw._tag === 'complete') return Effect.void
   const completeness = opts.allowChildPageBlocks === true ? tolerateTreeChildPages(raw) : raw
   if (completeness._tag === 'complete') return Effect.void
 
@@ -1122,6 +1123,12 @@ export const statusPage = (
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
     const remote = yield* gateway.pullPage({ pageId: local.pageId })
+    yield* assertRemoteMarkdownComplete({
+      operation: 'status',
+      path: opts.path,
+      pageId: local.pageId,
+      markdown: remote.markdown,
+    })
     return statusFromSnapshots({ path: opts.path, local, remote })
   }).pipe(
     Effect.tap((status) =>
@@ -1333,14 +1340,6 @@ export const pushGuarded = (opts: {
       remote: remoteForStatus.page,
     })
 
-    if (
-      status.localChanged === false &&
-      status.localPageMetadataChanged === false &&
-      status.localPropertiesChanged === false
-    ) {
-      return { path, pageId: status.pageId, pushed: false, status }
-    }
-
     yield* assertRemoteMarkdownComplete({
       operation: 'guarded_push',
       path,
@@ -1348,6 +1347,14 @@ export const pushGuarded = (opts: {
       markdown: remoteForStatus.markdown,
       allowChildPageBlocks: options.replaceContent === true,
     })
+
+    if (
+      status.localChanged === false &&
+      status.localPageMetadataChanged === false &&
+      status.localPropertiesChanged === false
+    ) {
+      return { path, pageId: status.pageId, pushed: false, status }
+    }
 
     yield* Effect.gen(function* () {
       if (

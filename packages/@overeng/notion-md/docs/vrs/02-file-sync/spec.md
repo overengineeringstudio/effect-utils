@@ -131,9 +131,9 @@ across remote renames and moves.
 For each remote node:
 
 1. Pull and validate a complete remote body.
-2. Render direct child-page anchors or unambiguous title placeholders as
-   relative Derived Child Links in the local body.
-3. Render the canonical Notion child anchors into the clean sync baseline.
+2. Normalize unambiguous title placeholders to id-bearing native `<page>`
+   anchors, preserving their position in the body.
+3. Use the same composed native body for the local file and clean sync baseline.
 4. Write the page with `source: remote` and establish its baseline unless the
    pass is a plan.
 
@@ -145,10 +145,8 @@ identity-less, or rebound files. After materialization, a stale path is removed
 only when the prior manifest recorded that page and the current file still
 identifies it; unrelated local files remain untouched.
 
-Derived Child Links are stripped only when composing a previously
-remote-authoritative tree back into canonical child anchors. Local-authoritative
-trees treat a Markdown link whose href happens to match a child path as authored
-content and preserve it through cross-reference resolution.
+Child anchors stay native in both authority modes. Ordinary authored Markdown
+links to child files remain inline cross-references; they are not child anchors.
 
 ## Watch Lifecycle
 

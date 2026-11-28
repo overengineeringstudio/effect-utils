@@ -130,4 +130,112 @@ it('queries real native retained records by time, host and full key without clai
       ]),
     ),
   ).toEqual(all)
+  const requests: URL[] = []
+  const loggedAt = (BigInt(Date.parse(since)) * 1000000n + 500000000n).toString()
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (request) => {
+      requests.push(new URL(request.url))
+      expect(request.headers.has('authorization')).toBe(false)
+      return Response.json({
+        status: 'success',
+        data: {
+          resultType: 'streams',
+          result: [{ values: values.map(([, line]) => [loggedAt, line]) }],
+        },
+      })
+    },
+  })
+  try {
+    const output = join(directory, 'live.json')
+    const summary = JSON.parse(
+      await run([
+        process.execPath,
+        cli,
+        'occurrences',
+        '--loki-url',
+        new URL('/buck2-occurrences/v1/query_range', server.url).href,
+        '--output',
+        output,
+        '--query-host',
+        keyed.host,
+        '--since',
+        since,
+        '--until',
+        until,
+      ]),
+    )
+    expect(JSON.parse(await Bun.file(output).text())).toEqual(all)
+    expect(summary).toMatchObject({
+      recordCount: all.records.length,
+      evidenceGapCount: all.evidenceGaps.length,
+      pages: 1,
+      rows: values.length,
+      coverage: 'UNKNOWN',
+    })
+    expect(summary.downloadedBytes).toBeGreaterThan(0)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.searchParams.get('host')).toBe(keyed.host)
+    expect(requests[0]!.searchParams.get('start')).toBe(
+      (BigInt(Date.parse(since)) * 1000000n).toString(),
+    )
+    expect(requests[0]!.searchParams.get('end')).toBe(
+      (BigInt(Date.parse(until)) * 1000000n - 1n).toString(),
+    )
+  } finally {
+    await server.stop(true)
+  }
 }, 30000)
+
+it('rejects mixed live/offline inputs, misplaced query hosts and oversized live windows', async () => {
+  const endpoint = 'http://127.0.0.1:1/buck2-occurrences/v1/query_range'
+  const cases = [
+    {
+      args: ['--loki-url', endpoint, '--records-dir', '/not-read'],
+      message: '--loki-url cannot be combined with offline retained inputs',
+    },
+    {
+      args: ['--records-dir', '/not-read', '--query-host', 'test-host'],
+      message: '--query-host requires --loki-url',
+    },
+    {
+      args: ['--loki-url', endpoint, '--output', '/not-written.json'],
+      message: 'Live occurrence queries must cover at most 24 hours',
+    },
+    {
+      args: ['--loki-url', endpoint],
+      message: '--loki-url requires --output FILE',
+    },
+    {
+      args: ['--loki-url', endpoint, '--output', ''],
+      message: '--loki-url requires --output FILE',
+    },
+    {
+      args: ['--records-dir', '/not-read', '--output', '/not-written.json'],
+      message: '--output requires --loki-url',
+    },
+  ]
+  for (const entry of cases) {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        cli,
+        'occurrences',
+        '--since',
+        '2020-01-01T00:00:00Z',
+        '--until',
+        '2020-01-03T00:00:00Z',
+        ...entry.args,
+      ],
+      { stdout: 'pipe', stderr: 'pipe', env: { ...process.env, GITHUB_TOKEN: '' } },
+    )
+    const [stdout, stderr, exit] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    expect(exit).not.toBe(0)
+    expect(`${stdout}${stderr}`).toContain(entry.message)
+  }
+})

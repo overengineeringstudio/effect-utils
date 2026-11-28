@@ -1056,6 +1056,7 @@
         "src/store/store-symlink.unit.test.ts",
         "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-holder-client.integration.test.ts",
         "src/store/store-worktree-holder-codec.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
@@ -1138,6 +1139,7 @@
         "src/store/store-symlink.unit.test.ts",
         "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-holder-client.integration.test.ts",
         "src/store/store-worktree-holder-codec.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
@@ -1599,6 +1601,7 @@
       "selectedTestFiles": [
         "src/adversarial-footgun.unit.test.ts",
         "src/batch-common-ancestor.unit.test.ts",
+        "src/body-completeness.unit.test.ts",
         "src/body-facade.unit.test.ts",
         "src/canonical-markdown.test.ts",
         "src/canonicalizer.unit.test.ts",
@@ -1639,6 +1642,7 @@
       "testFiles": [
         "src/adversarial-footgun.unit.test.ts",
         "src/batch-common-ancestor.unit.test.ts",
+        "src/body-completeness.unit.test.ts",
         "src/body-facade.unit.test.ts",
         "src/canonical-markdown.test.ts",
         "src/canonicalizer.unit.test.ts",
