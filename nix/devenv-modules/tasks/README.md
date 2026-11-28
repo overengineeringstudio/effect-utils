@@ -12,6 +12,8 @@ stdin/`-c` invocations or package-local sibling import contracts. Declarative
 `PYTHONPATH` remains supported; no global `PYTHONSAFEPATH` is required.
 `checks.<system>.worktree-tools-identity` exercises the actual immutable launcher
 with a scoped `sitecustomize` observer and verifies its stale-publication guard.
+The pnpm retirement suite also observes both interpreter starts across the real
+maintenance-lease re-exec, verifying that `-P` survives with the lease fd intact.
 
 ## `shared/` - Reusable Tasks
 

@@ -315,7 +315,8 @@ def main():
         # exec preserves fd 202 from the existing helper across the entire scan,
         # rename and removal; the helper owns the exact same installer lease.
         script = 'set -euo pipefail; source "$1"; acquire_pnpm_store_cache_lease flock exclusive "$2" 600; shift 2; exec "$@"'
-        os.execvpe("bash", ["bash", "-c", script, "pnpm-store-retire", helpers, str(target), sys.executable, *sys.argv], environment)
+        safe_path = ["-P"] if sys.flags.safe_path else []
+        os.execvpe("bash", ["bash", "-c", script, "pnpm-store-retire", helpers, str(target), sys.executable, *safe_path, *sys.argv], environment)
     expected_root = tuple(map(int, os.environ["_PNPM_RETIRE_ROOT"].split(":")))
     if identity(os.fstat(201)) != expected_root:
         raise Refusal("pinned target directory identity changed")
