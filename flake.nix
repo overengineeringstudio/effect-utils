@@ -340,6 +340,7 @@ rec {
                 WORKTREE_TEST_TOOLS = buck2;
                 WORKTREE_TEST_GITIGNORE = ./.gitignore;
                 WORKTREE_TEST_OTEL = "${ciTestShellProducts.otel-span}/bin/otel-span";
+                WORKTREE_TEST_LAUNCHER = "${self.packages.${system}.worktree-tools}/bin/buck2";
               }
               ''
                 export HOME="$TMPDIR/home"

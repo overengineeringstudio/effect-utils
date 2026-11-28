@@ -146,7 +146,7 @@ let
       ${lib.optionalString isolatedProcessTable ''
         sudo -n -E ${pkgs.coreutils}/bin/env -u EDITOR_VIEW_LEASE_FDS -u EDITOR_VIEW_LEASE_ACTIVE "PATH=$PATH" \
           ${pkgs.util-linux}/bin/unshare --pid --fork --mount-proc -- \
-          ${pkgs.python3}/bin/python3 ${./test-namespace-init.py} "$(id -u)" "$(id -g)" \
+          ${pkgs.python3}/bin/python3 -P ${./test-namespace-init.py} "$(id -u)" "$(id -g)" \
       ''}${
         lib.optionalString (isolatedProcessTable && sourceLauncher != null) "${sourceLauncher} "
       }"''${_otel_instr[@]}" ${
