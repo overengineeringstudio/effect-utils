@@ -383,7 +383,7 @@ describe('Buck watch reconciliation', () => {
       expect(invocations[0]?.signal).toBe(shutdown.signal)
       expect(invocations[0]?.detached).toBeUndefined()
       expect(invocations[1]?.detached).toBeUndefined()
-      expect(invocations[1]?.signal).toBeUndefined()
+      expect(invocations[1]?.signal).toBe(shutdown.signal)
       expect(invocations[1]?.command).toBe('/tools/bun')
       expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
       expect(invocations[1]?.args).toContain('--backing-root')
