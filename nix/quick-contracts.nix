@@ -336,8 +336,10 @@ let
   # The profile must prove the selected tool/task bytes it was evaluated from.
   # Checking fresh tools alone would let an old full-profile override re-publish
   # obsolete task commands after an authority edit.
+  # This standalone stdlib helper must not add the store root to Python's
+  # import path and enumerate it before checking the real authority.
   validateAuthority = ''
-    actual_inputs="$(${pkgs.python3}/bin/python3 ${../scripts/worktree-env.py} \
+    actual_inputs="$(${pkgs.python3}/bin/python3 -P ${../scripts/worktree-env.py} \
       inputs-digest ${preparedTools.identity-inputs-manifest} "$PWD")"
     if ! printf '%s\n' "$actual_inputs" | cmp -s - ${preparedTools.identity-inputs-digest}; then
       echo 'quick-contracts: frozen tool/task authority is stale; rebuild effectUtils.quickContracts.capabilities, republish WORKTREE_CAPABILITIES_PROFILE and prepare again' >&2
@@ -353,7 +355,7 @@ let
     fi
     # Buck owns each contract's source digests. Only frozen tool/task inputs
     # belong to the prepared environment; a check-source edit needs no Nix.
-    ${pkgs.python3}/bin/python3 ${../scripts/worktree-env.py} check \
+    ${pkgs.python3}/bin/python3 -P ${../scripts/worktree-env.py} check \
       "$PWD/.worktree-tools/v2/current/tools" > /dev/null
   '';
   reporter = pkgs.writeShellScript "quick-contracts-report" ''

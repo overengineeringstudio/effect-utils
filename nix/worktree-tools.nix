@@ -47,7 +47,7 @@ let
         chmod -R u+w "$TMPDIR/snapshot"
         git -c init.defaultBranch=identity init --template= "$TMPDIR/snapshot" >&2
         git -C "$TMPDIR/snapshot" add -f --all
-        ${pkgs.python3}/bin/python3 ${publication} inputs-digest \
+        ${pkgs.python3}/bin/python3 -P ${publication} inputs-digest \
           ${identityManifest} "$TMPDIR/snapshot" > "$out"
       '';
   bridge = import ./worktree-buck-trace.nix {
