@@ -105,21 +105,29 @@ describe('artifactCanMatter', () => {
 describe('apiBudgetAvailable', () => {
   it('allows calls strictly below the cap with an unknown or sufficient API budget', () => {
     expect(apiBudgetAvailable({ calls: 0, remaining: undefined })).toBe(true)
-    expect(apiBudgetAvailable({ calls: 799, remaining: undefined })).toBe(true)
-    expect(apiBudgetAvailable({ calls: 799, remaining: 201 })).toBe(true)
+    expect(apiBudgetAvailable({ calls: 3999, remaining: undefined })).toBe(true)
+    expect(apiBudgetAvailable({ calls: 3999, remaining: 201 })).toBe(true)
   })
 
-  it('stops at the 800-call cap even when the API budget is unknown or sufficient', () => {
-    for (const calls of [800, 801]) {
+  it('stops at the 4000-call cap even when the API budget is unknown or sufficient', () => {
+    for (const calls of [4000, 4001]) {
       expect(apiBudgetAvailable({ calls, remaining: undefined })).toBe(false)
       expect(apiBudgetAvailable({ calls, remaining: 1000 })).toBe(false)
+    }
+  })
+
+  it('collects all 715 artifacts after 444 daily discovery calls without sampling', () => {
+    const discoveryCalls = 444
+    const artifacts = 715
+    for (let calls = discoveryCalls; calls < discoveryCalls + artifacts; calls++) {
+      expect(apiBudgetAvailable({ calls, remaining: 5000 - calls })).toBe(true)
     }
   })
 
   it('preserves the 200-call API reserve', () => {
     for (const remaining of [0, 199, 200]) {
       expect(apiBudgetAvailable({ calls: 0, remaining })).toBe(false)
-      expect(apiBudgetAvailable({ calls: 799, remaining })).toBe(false)
+      expect(apiBudgetAvailable({ calls: 3999, remaining })).toBe(false)
     }
   })
 })
