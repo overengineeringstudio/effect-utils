@@ -594,16 +594,14 @@ if (current !== phase) {
           diagnostics += chunk
         })
         try {
-          socket = await Promise.race([
-            connected.promise,
-            closed.promise.then(() => {
-              throw new Error(`CLI closed before readiness: ${diagnostics}`)
-            }),
-          ])
+          const prematureClose = closed.promise.then(() => {
+            throw new Error(`CLI closed before cleanup release: ${diagnostics}`)
+          })
+          socket = await Promise.race([connected.promise, prematureClose])
           const lines = createInterface({ input: socket })[Symbol.asyncIterator]()
-          expect((await lines.next()).value).toBe('ready')
+          expect((await Promise.race([lines.next(), prematureClose])).value).toBe('ready')
           expect(child.kill(signal)).toBe(true)
-          expect((await lines.next()).value).toBe('cleanup-start')
+          expect((await Promise.race([lines.next(), prematureClose])).value).toBe('cleanup-start')
           expect(finished).toBe(false)
           expect(readFileSync(output, 'utf8')).toBe('prior-authority\n')
           socket.write('release\n')
