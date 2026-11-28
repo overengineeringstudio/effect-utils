@@ -945,6 +945,11 @@ Editor publication starts the longest declared views first in its existing
 four-worker publisher, without changing authority, snapshot validation, or
 commit serialization.
 
+Editor publication derives workspace dependencies from `pnpm-lock.yaml`.
+Importer-relative `link:` resolutions and lockfile-root-relative injected
+`file:` snapshots (including snapshot suffixes) must resolve to an existing
+workspace importer; unresolved workspace dependencies fail closed.
+
 | Observed Darwin phase/script | Seconds |
 | ---------------------------- | ------: |
 | Module task, two workers     | 162.926 |

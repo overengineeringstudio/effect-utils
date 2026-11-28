@@ -147,74 +147,21 @@ export const reconcileOccurrenceRecords = ({
     }
     for (const [span, { value, capture }] of merged) {
       if (conflicted.has(JSON.stringify([build, span])) === true) continue
-      const read = get(value)
-      const attrs = attributes({ value: read('attributes'), keys: actionKeys })
-      const resource = attr(capture.attrs)
-      const action = attr(attrs)
-      const id = action('buck2.occurrence_id')
-      const host = resource('host.name')
-      if (id === null || host === null) {
-        gaps.add(`${build}:${span}:missing-identity`)
-        continue
-      }
-      if (hosts.has(host) === false) gaps.add(`${host}:unexpected-host`)
-      const run = resource('cicd.pipeline.run.id')
-      if (
-        terminal !== undefined &&
-        (terminal.host !== host || (run !== null && terminal.run !== run))
-      )
-        gaps.add(`${build}:capture-census-mismatch`)
-      if (resource('buck2.root_id') !== null && capture.root !== resource('buck2.root_id'))
-        gaps.add(`${build}:root-mismatch`)
-      const started = ns(read('start_ns'))
-      const ended = ns(read('end_ns'))
-      const closed =
-        boolean(read('ended')) === true && attrs.get('buck2.unclosed') !== true && ended >= started
-      if (closed === false) {
-        gaps.add(`${id}:unclosed`)
-        continue
-      }
-      if (ended < start || ended >= end) continue
-      const rawOutcome = action('buck2.execution_outcome')
-      const outcome = attrs.get('buck2.failed') === true ? 'failed' : rawOutcome
-      if (
-        outcome !== 'local-exec' &&
-        outcome !== 'cache-hit' &&
-        outcome !== 'remote-exec' &&
-        outcome !== 'failed' &&
-        outcome !== 'unknown' &&
-        outcome !== null
-      ) {
-        gaps.add(`${id}:unknown-outcome`)
-        continue
-      }
-      const bytes = action('buck2.total_bytes')
-      const record: OccurrenceEvidenceRecord = {
-        id,
-        buildId: build,
-        rootId: capture.root,
-        host,
-        runId: run ?? terminal?.run ?? null,
-        lane: terminal?.lane ?? null,
-        digest: action('buck2.action_digest'),
-        startedAt: milliseconds(started),
-        completedAt: milliseconds(ended),
-        executionOutcome: outcome ?? 'unknown',
-        durationNs: safe(ended - started),
-        totalBytes: bytes === null ? null : safe(BigInt(bytes)),
-      }
-      for (const key of [
-        'rootId',
-        'runId',
-        'lane',
-        'digest',
-        'startedAt',
-        'completedAt',
-        'durationNs',
-        'totalBytes',
-      ] satisfies readonly (keyof OccurrenceEvidenceRecord)[])
-        if (record[key] === null) gaps.add(`${id}:missing-${key}`)
-      if (record.executionOutcome === 'unknown') gaps.add(`${id}:unknown-outcome`)
+      const record = normalizeOccurrenceRecord({
+        build,
+        span,
+        value,
+        capture,
+        terminal,
+        hosts,
+        start,
+        end,
+        addGap: (gap) => {
+          gaps.add(gap)
+        },
+      })
+      if (record === undefined) continue
+      const id = record.id
       const canonical = JSON.stringify(record)
       const previous = observed.get(id)
       if (previous !== undefined && previous !== canonical) {
@@ -229,4 +176,94 @@ export const reconcileOccurrenceRecords = ({
     records: records.filter((record) => conflicted.has(record.id) === false),
     evidenceGaps: Array.from(gaps).toSorted(),
   }
+}
+
+/** Shared per-row semantics; global identity/version reconciliation belongs to the caller. */
+export const normalizeOccurrenceRecord = ({
+  build,
+  span,
+  value,
+  capture,
+  terminal,
+  hosts,
+  start,
+  end,
+  addGap,
+}: {
+  build: string
+  span: string
+  value: unknown
+  capture: Pick<Capture, 'attrs' | 'root'>
+  terminal: Census | undefined
+  hosts: ReadonlySet<string>
+  start: bigint
+  end: bigint
+  addGap: (gap: string) => void
+}): OccurrenceEvidenceRecord | undefined => {
+  const read = get(value)
+  const attrs = attributes({ value: read('attributes'), keys: actionKeys })
+  const resource = attr(capture.attrs)
+  const action = attr(attrs)
+  const id = action('buck2.occurrence_id')
+  const host = resource('host.name')
+  if (id === null || host === null) {
+    addGap(`${build}:${span}:missing-identity`)
+    return undefined
+  }
+  if (hosts.has(host) === false) addGap(`${host}:unexpected-host`)
+  const run = resource('cicd.pipeline.run.id')
+  if (terminal !== undefined && (terminal.host !== host || (run !== null && terminal.run !== run)))
+    addGap(`${build}:capture-census-mismatch`)
+  if (resource('buck2.root_id') !== null && capture.root !== resource('buck2.root_id'))
+    addGap(`${build}:root-mismatch`)
+  const started = ns(read('start_ns'))
+  const ended = ns(read('end_ns'))
+  const closed =
+    boolean(read('ended')) === true && attrs.get('buck2.unclosed') !== true && ended >= started
+  if (closed === false) {
+    addGap(`${id}:unclosed`)
+    return undefined
+  }
+  if (ended < start || ended >= end) return undefined
+  const rawOutcome = action('buck2.execution_outcome')
+  const outcome = attrs.get('buck2.failed') === true ? 'failed' : rawOutcome
+  if (
+    outcome !== 'local-exec' &&
+    outcome !== 'cache-hit' &&
+    outcome !== 'remote-exec' &&
+    outcome !== 'failed' &&
+    outcome !== 'unknown' &&
+    outcome !== null
+  ) {
+    addGap(`${id}:unknown-outcome`)
+    return undefined
+  }
+  const bytes = action('buck2.total_bytes')
+  const record: OccurrenceEvidenceRecord = {
+    id,
+    buildId: build,
+    rootId: capture.root,
+    host,
+    runId: run ?? terminal?.run ?? null,
+    lane: terminal?.lane ?? null,
+    digest: action('buck2.action_digest'),
+    startedAt: milliseconds(started),
+    completedAt: milliseconds(ended),
+    executionOutcome: outcome ?? 'unknown',
+    durationNs: safe(ended - started),
+    totalBytes: bytes === null ? null : safe(BigInt(bytes)),
+  }
+  for (const key of [
+    'rootId',
+    'runId',
+    'lane',
+    'digest',
+    'startedAt',
+    'completedAt',
+    'durationNs',
+    'totalBytes',
+  ] satisfies readonly (keyof OccurrenceEvidenceRecord)[])
+    if (record[key] === null) addGap(`${id}:missing-${key}`)
+  if (record.executionOutcome === 'unknown') addGap(`${id}:unknown-outcome`)
+  return record
 }

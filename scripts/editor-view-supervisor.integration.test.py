@@ -164,7 +164,6 @@ class NativePublicationCopyFixtureTest(unittest.TestCase):
             self.assertTrue((root / "ready").exists())
             self.assertFalse(interrupted.exists())
 
-
 class PublicationSupervisorTest(unittest.TestCase):
     def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):
         supervisor = load_supervisor()
