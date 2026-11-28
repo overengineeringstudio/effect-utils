@@ -199,6 +199,9 @@ describe('gate wrapper native-only death and real gate-slot expiry', () => {
           // cgroup instead of asking systemd to move work outside that scope.
           GATE_SLOT_TEST_FIXTURE: '1',
           GATE_SLOT_TEST_NO_SYSTEMD: '1',
+          // The real parent accounts for this bounded child; do not charge its
+          // private readiness-only gate as another host-wide build reservation.
+          GATE_SLOT_TEST_HOST_BUDGET_BYTES: '0',
           GATE_SLOTS_DIR: join(fixture.root, 'slots'),
           GATE_SLOTS_FENCE_DIR: join(fixture.root, 'fences'),
           GATE_SLOTS_HEAVY: '1',

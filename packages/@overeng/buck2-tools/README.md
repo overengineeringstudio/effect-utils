@@ -167,6 +167,12 @@ Darwin notify lacks the required delivery barrier. Publish the owning tools agai
 with `python3 scripts/worktree-env.py prepare` after changing the watcher policy;
 do not override a published profile's watcher in `.buckconfig.local`.
 
+The gate teardown regression uses a private, no-systemd, eight-second readiness
+fixture inside its real parent's enforced scope. Only that fixture sets
+`GATE_SLOT_TEST_HOST_BUDGET_BYTES=0`, avoiding a second host-wide reservation for
+the same bounded child. The real outer gate, physical cgroup, disk floor, deadline,
+and native teardown assertions remain unchanged.
+
 ## Referenced TypeScript workspace checks
 
 `tsgo_workspace_check` preserves an authored `tsgo --build --force <project>`
