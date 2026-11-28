@@ -264,8 +264,17 @@ Copy-interruption inputs contain real directories without backing roots;
 successful publication separately exercises declared backing-root symlinks.
 The matrix records publisher stderr/failures separately by actual command identity;
 its bounded/redacted assertions cover the actual Buck terminal fd2 stream.
-Fixture workspaces resolve an owned sibling alias before deriving private
+Fixture workspaces use private temporary directories under the user's home,
+outside the repository, and resolve an owned sibling alias before deriving
 budget/content paths, covering canonical-path requirements on Linux and macOS.
+Bun enumerates cwd ancestors during startup; avoiding the busy shared `/tmp`
+keeps unrelated directory scans out of the unchanged ten-second test deadline.
+On timeout, the matrix preserves available publisher diagnostics and captured
+supervisor bytes before cleanup, then rethrows the original timeout.
+
+The signal fixtures use OS `SIGTERM` and explicitly gated copy cleanup.
+Publishers join active child closes before returning; native signal failures
+take precedence over concurrent abort notifications.
 
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then

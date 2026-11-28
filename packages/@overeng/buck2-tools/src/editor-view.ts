@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { execFile, spawnSync } from 'node:child_process'
+import { execFile, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
@@ -1138,6 +1138,30 @@ const requireImmutableTool = ({ tool, label }: { tool: string; label: string }):
     fail(`${label} tool must resolve into the immutable Nix store: ${immutableTool}`)
 }
 
+/** Native copy termination remains structured through batch cleanup and CLI transport. */
+class EditorViewCommandFailure extends Error {
+  readonly signal: NodeJS.Signals | undefined
+
+  constructor({
+    message,
+    signal,
+    cause,
+  }: {
+    readonly message: string
+    readonly signal: NodeJS.Signals | undefined
+    readonly cause: unknown
+  }) {
+    super(message, { cause })
+    this.signal = signal
+  }
+}
+
+const activeCopies = new Set<ChildProcess>()
+let publicationInterrupted = false
+const requirePublicationRunning = (): void => {
+  if (publicationInterrupted === true) fail('editor publication interrupted')
+}
+
 const runTool = ({
   tool,
   args,
@@ -1147,6 +1171,7 @@ const runTool = ({
   args: readonly string[]
   label: string
 }): void => {
+  requirePublicationRunning()
   requireImmutableTool({ tool, label })
   const result = spawnSync(tool, args, {
     cwd: '/',
@@ -1170,19 +1195,27 @@ const copyWithTool = ({
   args: readonly string[]
   label: string
 }): Promise<void> => {
+  requirePublicationRunning()
   requireImmutableTool({ tool, label })
   const { promise, resolve: resolveCopy, reject: rejectCopy } = Promise.withResolvers<void>()
-  execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
+  const child = execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
+    activeCopies.delete(child)
     if (error !== null) {
       rejectCopy(
-        new Error(
-          `editor view: ${label} failed with exit ${error.code ?? 'unknown'}: ${stderr.trim() || stdout.trim() || error.message}`,
-        ),
+        new EditorViewCommandFailure({
+          message:
+            error.signal === null || error.signal === undefined
+              ? `editor view: ${label} failed with exit ${error.code ?? 'unknown'}: ${stderr.trim() || stdout.trim() || error.message}`
+              : `editor view: ${label} terminated by ${error.signal}`,
+          signal: error.signal ?? undefined,
+          cause: error,
+        }),
       )
       return
     }
     resolveCopy()
   })
+  activeCopies.add(child)
   return promise
 }
 
@@ -4483,12 +4516,32 @@ const parseCli = (args: readonly string[]): ParsedCli => {
   }
 }
 
+const nativeCommandSignal = ({
+  error,
+  seen = new Set<unknown>(),
+}: {
+  readonly error: unknown
+  readonly seen?: Set<unknown>
+}): NodeJS.Signals | undefined => {
+  if (seen.has(error) === true) return undefined
+  seen.add(error)
+  if (error instanceof EditorViewCommandFailure) return error.signal
+  if (error instanceof AggregateError)
+    for (const failure of error.errors) {
+      const signal = nativeCommandSignal({ error: failure, seen })
+      if (signal !== undefined) return signal
+    }
+  return error instanceof Error ? nativeCommandSignal({ error: error.cause, seen }) : undefined
+}
+
 const main = async (): Promise<void> => {
   process.once('SIGTERM', () => {
+    publicationInterrupted = true
+    process.exitCode = 143
     closeFingerprintAdmission()
     for (const report of interruptedPublicationPhases) report()
-    // Give asynchronous span emission a bounded chance to flush before failing closed.
-    setTimeout(() => process.exit(143), 100)
+    // execFile callbacks join close before publication cleanup and owner release.
+    for (const child of activeCopies) child.kill('SIGTERM')
   })
   const args = process.argv.slice(2)
   if (args[0] === 'budget') {
@@ -4595,4 +4648,13 @@ const main = async (): Promise<void> => {
   }
 }
 
-if (import.meta.main === true) await main()
+if (import.meta.main === true)
+  try {
+    await main()
+  } catch (error) {
+    const signal = nativeCommandSignal({ error })
+    if (publicationInterrupted === false && signal !== undefined) {
+      process.removeAllListeners(signal)
+      process.kill(process.pid, signal)
+    } else if (publicationInterrupted === false) throw error
+  }
