@@ -340,7 +340,7 @@ let
 
       rust_profile_args=()
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
-        release_settings="$(${pkgs.python3}/bin/python3 ${releaseProfileScript} ${lib.escapeShellArg "${cargoWorkspaceRoot}/Cargo.toml"})"
+        release_settings="$(${pkgs.python3}/bin/python3 -P ${releaseProfileScript} ${lib.escapeShellArg "${cargoWorkspaceRoot}/Cargo.toml"})"
         while IFS= read -r setting; do
           rust_profile_args+=(--config "$setting")
         done <<< "$release_settings"

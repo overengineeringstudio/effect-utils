@@ -2,6 +2,17 @@
 
 This directory contains devenv task modules organized by reusability.
 
+Standalone Python helpers interpolated directly into Nix launchers live at the
+root of `/nix/store`. Invoke these stdlib-only helpers with Python's `-P` flag:
+otherwise the script directory becomes an import search path and imports may
+enumerate the entire store before the helper starts. This applies to worktree
+selection, pnpm store retirement, namespace init, Cargo release-profile extraction,
+product composition, and the synthetic macOS app actions. It does not change
+stdin/`-c` invocations or package-local sibling import contracts. Declarative
+`PYTHONPATH` remains supported; no global `PYTHONSAFEPATH` is required.
+`checks.<system>.worktree-tools-identity` exercises the actual immutable launcher
+with a scoped `sitecustomize` observer and verifies its stale-publication guard.
+
 ## `shared/` - Reusable Tasks
 
 These tasks are meant to be imported by other repos via the flake input:
