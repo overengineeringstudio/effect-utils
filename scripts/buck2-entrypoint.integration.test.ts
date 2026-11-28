@@ -23,6 +23,7 @@ import { dirname, join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
+import { reapiAdmissionProbeBudgetMs } from './buck2-cache-posture.ts'
 import * as contractEnvironmentTests from './buck2-entrypoint.contract-environment.integration.test.ts'
 import * as daemonPostureTests from './buck2-entrypoint.posture.integration.test.ts'
 import {
@@ -2362,6 +2363,9 @@ Object.defineProperty(process, 'execve', {
     }, 15000)
   }
 
+  const tlsProbeCeilingMs = 8_000
+  // The typical local path takes only a few seconds; the outer watchdog must
+  // still cover all four sequential operation ceilings plus startup/cleanup.
   it('preserves reader and writer admission when TLS succeeds without h2 ALPN', async () => {
     // Public test-only fixture, vendored verbatim from Bun 1.4.2 (valid through February 2036).
     // Regenerate these literals from the pinned upstream cert.pem and cert.key, not by hand:
@@ -2537,7 +2541,7 @@ let attempt;
 const admitted = await probeRemoteCacheCapabilities({
   address: 'grpcs://127.0.0.1:${relayAddress.port}', instanceName: '', tls: true,
   header: undefined, env: {}, connectTlsDeadlineMs: 5000,
-  responseDeadlineMs: 1000, totalCeilingMs: 8000, attemptCeilingMs: 8000,
+  responseDeadlineMs: 1000, totalCeilingMs: ${tlsProbeCeilingMs}, attemptCeilingMs: ${tlsProbeCeilingMs},
   onAttempt: (value) => { attempt = value; },
 });
 console.log(JSON.stringify({admitted, attempt}));`,
@@ -2566,7 +2570,7 @@ console.log(JSON.stringify({admitted, attempt}));`,
     } finally {
       tls.close()
     }
-  })
+  }, 3 * reapiAdmissionProbeBudgetMs.totalCeilingMs + tlsProbeCeilingMs + 2_000)
 
   for (const initialAvailable of [true, false]) {
     it(`ages ${String(initialAvailable)} REAPI admission from probe completion`, async () => {

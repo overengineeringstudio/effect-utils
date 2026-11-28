@@ -180,6 +180,12 @@ fixtures' unchanged deadlines. Standalone module isolation, hostile-PATH evidenc
 native event/census assertions and all other fixture runtime boundaries remain
 unchanged.
 
+The compound TLS admission fixture normally takes only a few seconds, but its
+outer watchdog covers three sequential admission total ceilings, the independent
+delayed-TLS probe ceiling, and two seconds of startup/cleanup. It derives that
+budget from the production constant and the probe's actual ceiling; individual
+connect, response and total deadlines, retries and protocol assertions are unchanged.
+
 ## Referenced TypeScript workspace checks
 
 `tsgo_workspace_check` preserves an authored `tsgo --build --force <project>`
