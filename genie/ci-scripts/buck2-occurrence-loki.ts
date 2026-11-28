@@ -4,7 +4,7 @@ import { Schema } from 'effect'
 
 import { fail, type RetainedOccurrenceFile } from './buck2-occurrence-record-codec.ts'
 
-const Response = Schema.Struct({
+export const OccurrenceLokiResponse = Schema.Struct({
   status: Schema.Literal('success'),
   data: Schema.Struct({
     resultType: Schema.Literal('streams'),
@@ -24,26 +24,39 @@ const Envelope = Schema.Struct({
   line: Schema.String,
 })
 
+/** Shared native envelope validation for offline reconstruction and the disk ledger. */
+export const decodeOccurrenceLokiEnvelope = (line: string): typeof Envelope.Type => {
+  const row = Schema.decodeUnknownSync(Schema.fromJsonString(Envelope))(line)
+  if (
+    !/^[a-f0-9]{64}$/.test(row.snapshotSha256) ||
+    !Number.isSafeInteger(row.ordinal) ||
+    !Number.isSafeInteger(row.recordCount) ||
+    row.ordinal < 0 ||
+    row.recordCount < 1 ||
+    row.recordCount > 5000 ||
+    row.ordinal >= row.recordCount ||
+    row.line.includes('\n')
+  )
+    fail()
+  return row
+}
+
 /** Rebuild only complete, content-addressed producer snapshots; never invent a header. */
 export const decodeOccurrenceLoki = (body: string): RetainedOccurrenceFile[] => {
-  const response = Schema.decodeUnknownSync(Schema.fromJsonString(Response))(body)
+  const response = Schema.decodeUnknownSync(Schema.fromJsonString(OccurrenceLokiResponse))(body)
   const values = response.data.result.flatMap((stream) => stream.values)
   // The proxy's fixed request limit is 5000. Hitting it cannot certify completeness.
   if (values.length >= 5000) fail()
+  return reconstructOccurrenceLokiSnapshots(values.map(([, line]) => line))
+}
+
+/** @internal Shared strict reconstruction; the live reader calls this only after exhaustion. */
+export const reconstructOccurrenceLokiSnapshots = (
+  lines: Iterable<string>,
+): RetainedOccurrenceFile[] => {
   const snapshots = new Map<string, { count: number; lines: Map<number, string> }>()
-  for (const [, line] of values) {
-    const row = Schema.decodeUnknownSync(Schema.fromJsonString(Envelope))(line)
-    if (
-      !/^[a-f0-9]{64}$/.test(row.snapshotSha256) ||
-      !Number.isSafeInteger(row.ordinal) ||
-      !Number.isSafeInteger(row.recordCount) ||
-      row.ordinal < 0 ||
-      row.recordCount < 1 ||
-      row.recordCount > 5000 ||
-      row.ordinal >= row.recordCount ||
-      row.line.includes('\n')
-    )
-      fail()
+  for (const line of lines) {
+    const row = decodeOccurrenceLokiEnvelope(line)
     let snapshot = snapshots.get(row.snapshotSha256)
     if (snapshot === undefined) {
       snapshot = { count: row.recordCount, lines: new Map() }

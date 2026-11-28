@@ -41,6 +41,8 @@ export class IrohNode extends Context.Service<
     readonly endpointId: string
     /** The relay this endpoint can be reached through. */
     readonly homeRelay: Effect.Effect<string, RelayUnreachable>
+    /** Re-probes connectivity and wakes relay backoff without replacing the endpoint. */
+    readonly networkChange: Effect.Effect<void>
     /** Incoming connections, until the endpoint closes. */
     readonly incoming: Stream.Stream<FramedConn>
     /** Dials a peer. The connection is closed when the surrounding scope closes. */
@@ -52,6 +54,7 @@ export class IrohNode extends Context.Service<
 export interface IrohWasmNode {
   endpointId(): string
   homeRelay(): Promise<unknown>
+  networkChange(): Promise<void>
   accept(): Promise<unknown>
   connect(endpointId: string, relayUrl: string): Promise<unknown>
   close(): Promise<unknown>
@@ -123,6 +126,7 @@ export const layerWasm = (options: WasmNodeOptions): Layer.Layer<IrohNode, NodeB
             orElse: () => Effect.fail(new RelayUnreachable()),
           }),
         ),
+        networkChange: Effect.promise(() => node.networkChange()),
         incoming: Stream.fromEffectRepeat(
           Effect.tryPromise(() => node.accept() as Promise<FramedConn | null>),
         ).pipe(

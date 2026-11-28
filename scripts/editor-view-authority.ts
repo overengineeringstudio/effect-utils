@@ -303,9 +303,15 @@ export const workspaceEditorDependencies = ({
       ['dependencies', 'devDependencies', 'optionalDependencies'].flatMap((field) =>
         Object.values(importer[field] ?? {}).flatMap(({ specifier, version }) => {
           if (specifier.startsWith('workspace:') !== true) return []
-          if (version.startsWith('link:') !== true)
+          // Injected file: snapshots are lockfile-root-relative, unlike importer-relative link: paths.
+          const dependency =
+            version.startsWith('link:') === true
+              ? posix.normalize(posix.join(packagePath, version.slice(5)))
+              : version.startsWith('file:') === true
+                ? posix.normalize(version.slice(5).replace(/\(.+$/u, ''))
+                : undefined
+          if (dependency === undefined)
             throw new Error(`unresolved workspace dependency in ${packagePath}`)
-          const dependency = posix.normalize(posix.join(packagePath, version.slice(5)))
           if (lock.importers?.[dependency] === undefined)
             throw new Error(`missing workspace importer ${dependency}`)
           return [dependency]

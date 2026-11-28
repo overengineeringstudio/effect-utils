@@ -36,6 +36,7 @@ import {
   renderOtlp,
   renderOccurrenceOtlp,
 } from './buck2-cache-join.ts'
+import { OccurrenceQueryError, queryOccurrences } from './buck2-cache-occurrences.ts'
 import {
   planProofHistory,
   selectProofRelevantRuns,
@@ -44,7 +45,6 @@ import {
 } from './buck2-cache-proof-history.ts'
 import { writeBuck2CacheProofReports } from './buck2-cache-proof-reports.ts'
 import { decodeEvidence, renderWarm99Diagnostics } from './buck2-cache-warm99.ts'
-import { OccurrenceQueryError, queryOccurrences } from './buck2-cache-occurrences.ts'
 
 const limits = {
   runs: 1000,
@@ -118,7 +118,7 @@ const timestamp = ({ value, now }: { value: string; now: number }) => {
 }
 
 const help = `buck2-cache-join --repo owner/name (--since <ISO-8601|24h> [--until <ISO-8601|duration>] | --previous-utc-day) [--format prometheus|json] [--otlp-spool <pending-directory>]
-buck2-cache-join occurrences --records-dir DIR --since ISO-8601 [--until ISO-8601] [--host HOST] [--key FULL_ACTION_DIGEST]
+buck2-cache-join occurrences (--records-dir DIR | --loki-response FILE | --loki-url URL --output FILE) --since ISO-8601 [--until ISO-8601] [--query-host HOST] [--host HOST] [--key FULL_ACTION_DIGEST]
 
 Join strict Buck2 action evidence from selected workflow runs created in the bounded window.
 GITHUB_TOKEN is required (Actions read permission). No GitHub writes are performed.
