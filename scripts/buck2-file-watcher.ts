@@ -20,6 +20,8 @@ import { getPriority, homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 
+import type { EditorPublicationOwner } from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
+
 const managedBegin = '# BEGIN effect-utils file watcher admission'
 const managedEnd = '# END effect-utils file watcher admission'
 
@@ -485,6 +487,7 @@ export const reconcileWatcherDaemon = ({
   provider,
 }: {
   readonly native: string
+  readonly owner?: EditorPublicationOwner
   readonly repoRoot: string
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>

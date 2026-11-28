@@ -166,57 +166,79 @@ def observe_publication_admission(ready_fd):
     raise ValueError("failed to notify owner admission")
 
 
-def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
-    # Reap orphaned descendants ourselves on Linux, including TERM-resistant helpers.
-    if sys.platform == "linux":
-        if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
-            raise OSError(ctypes.get_errno(), "cannot become publication subreaper")
-    # Popen deliberately closes every descriptor outside this supervisor's
-    # lock/admission protocol. Lease mappings belong to the launching process,
-    # not this new child: its native source launcher must discover fresh leases.
-    child_env = os.environ.copy()
-    child_env.pop("EDITOR_VIEW_LEASE_FDS", None)
-    child_env.pop("EDITOR_VIEW_LEASE_ACTIVE", None)
-    child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds, env=child_env)
+def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admission_write_fd=None):
+    # Record interruption before Popen can create an unjoined child session.
     interrupted = []
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda number, _frame: interrupted.append(number))
+    try:
+        # Reap orphaned descendants ourselves on Linux, including TERM-resistant helpers.
+        if sys.platform == "linux":
+            if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+                raise OSError(ctypes.get_errno(), "cannot become publication subreaper")
+        # Close unrelated descriptors; callers explicitly declare their protocol.
+        # Notification-only supervision passes readiness, never an owner capability.
+        child_env = os.environ.copy()
+        child_env.pop("EDITOR_VIEW_LEASE_FDS", None)
+        child_env.pop("EDITOR_VIEW_LEASE_ACTIVE", None)
+        child_env.pop("EDITOR_VIEW_ADMISSION_READY_FD", None)
+        if admission_write_fd is not None:
+            child_env["EDITOR_VIEW_ADMISSION_READY_FD"] = str(admission_write_fd)
+        if interrupted:
+            return 128 + interrupted[0]
+        child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds, env=child_env)
+    finally:
+        if admission_write_fd is not None:
+            os.close(admission_write_fd)
     started = time.monotonic()
     admitted = waiting_lock is None
+    no_publication = False
+    admission_failed = False
     expires = started + deadline if admitted and deadline is not None else float("inf")
     diagnostic = AdmissionDiagnostic()
     def observe_admission():
-        nonlocal admitted, expires
-        if not admitted:
+        nonlocal admitted, no_publication, admission_failed, expires
+        if not admitted and not no_publication:
             lock_path, ready_fd = waiting_lock
             try:
-                admitted = os.read(ready_fd, 1) == b"1"
-            except BlockingIOError:
-                pass
+                notification = observe_publication_admission(ready_fd)
+            except ValueError:
+                admission_failed = True
+                return
+            if notification is None:
+                return
+            admitted = notification == "owner-acquired"
+            no_publication = notification == "no-publication"
             if admitted:
                 now = time.monotonic()
                 expires = now + deadline if deadline is not None else float("inf")
                 print(f"Editor-view publication admitted on lock {lock_path} after waiting {now - started:.3f}s.", file=sys.stderr, flush=True)
-    while not interrupted and time.monotonic() < expires:
+    while not interrupted and not admission_failed and time.monotonic() < expires:
         observe_admission()
-        if waiting_lock is not None and not admitted:
+        if admission_failed:
+            break
+        if waiting_lock is not None and not admitted and not no_publication:
             diagnostic.observe(waiting_lock[0], started)
+            # Keep the session leader unreaped until notification or cleanup pins its group identity.
+            time.sleep(0.05)
+            continue
         elif diagnostic.child is not None:
             diagnostic.close()
         try:
             result = child.wait(timeout=min(0.05, max(0.001, expires - time.monotonic())))
             observe_admission()  # Also report admission for a child that exits immediately.
-            if not interrupted:
+            if not interrupted and not admission_failed:
                 diagnostic.close()
                 return result
             break
         except subprocess.TimeoutExpired:
             pass
     diagnostic.close()
-    status = 128 + interrupted[0] if interrupted else 124
-    if waiting_lock is not None and not admitted:
+    status = 1 if admission_failed else 128 + interrupted[0] if interrupted else 124
+    if waiting_lock is not None and not admitted and not no_publication:
         print(f"Editor-view publication was waiting for another publication on lock {waiting_lock[0]}.", file=sys.stderr, flush=True)
-    reason = "was interrupted" if interrupted else f"exceeded its {deadline:g}s execution deadline"
+    reason = ("failed to notify owner admission" if admission_failed else
+              "was interrupted" if interrupted else f"exceeded its {deadline:g}s execution deadline")
     print(f"Editor-view publication {reason}; terminating process group (grace {grace:g}s), publication failed.", file=sys.stderr, flush=True)
     signal_group(child.pid, signal.SIGTERM)
     # Do not reap the leader yet: retain its PID/group identity through escalation.
@@ -234,6 +256,21 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     return status
 
 
+def supervise_notified(command, deadline, grace, lock_path):
+    # Read-only diagnostic context; only the authority owns the persistent lock inode.
+    ready_read, ready_write = os.pipe()
+    os.set_blocking(ready_read, False)
+    try:
+        return supervise(
+            command, deadline, grace,
+            pass_fds=(ready_write,),
+            waiting_lock=(lock_path, ready_read),
+            admission_write_fd=ready_write,
+        )
+    finally:
+        os.close(ready_read)
+
+
 def supervise_locked(command, deadline, grace, lock_path):
     os.makedirs(os.path.dirname(os.path.abspath(lock_path)), exist_ok=True)
     # Keep the shared open-file description alive in the supervisor until all
@@ -247,10 +284,10 @@ def supervise_locked(command, deadline, grace, lock_path):
                 deadline, grace,
                 pass_fds=(lock.fileno(), ready_write),
                 waiting_lock=(lock_path, ready_read),
+                admission_write_fd=ready_write,
             )
         finally:
             os.close(ready_read)
-            os.close(ready_write)
 
 
 if __name__ == "__main__":
@@ -261,6 +298,7 @@ if __name__ == "__main__":
         sys.exit(0)
     elif sys.argv[1] == "--acquire":
         lock_fd, ready_fd = int(sys.argv[2]), int(sys.argv[3])
+        os.environ.pop("EDITOR_VIEW_ADMISSION_READY_FD", None)
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
         record_holder(lock_fd, sys.argv[4], os.getppid())
         os.write(ready_fd, b"1")
