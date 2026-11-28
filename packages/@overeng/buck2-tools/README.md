@@ -279,6 +279,8 @@ take precedence over concurrent abort notifications.
 Shared native-owner checks follow the pinned daemon's project-root rules.
 Notification-only supervision observes readiness without owning its lock;
 the production CLI retains legacy locking until the atomic caller migration.
+Interruption handlers are installed before creating a child session; an
+interrupted launch still joins group termination and escalation before returning.
 
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then

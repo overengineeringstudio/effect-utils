@@ -167,6 +167,10 @@ def observe_publication_admission(ready_fd):
 
 
 def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admission_write_fd=None):
+    # Record interruption before Popen can create an unjoined child session.
+    interrupted = []
+    for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda number, _frame: interrupted.append(number))
     try:
         # Reap orphaned descendants ourselves on Linux, including TERM-resistant helpers.
         if sys.platform == "linux":
@@ -180,13 +184,12 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admissio
         child_env.pop("EDITOR_VIEW_ADMISSION_READY_FD", None)
         if admission_write_fd is not None:
             child_env["EDITOR_VIEW_ADMISSION_READY_FD"] = str(admission_write_fd)
+        if interrupted:
+            return 128 + interrupted[0]
         child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds, env=child_env)
     finally:
         if admission_write_fd is not None:
             os.close(admission_write_fd)
-    interrupted = []
-    for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, lambda number, _frame: interrupted.append(number))
     started = time.monotonic()
     admitted = waiting_lock is None
     no_publication = False
