@@ -183,17 +183,27 @@ Reading is bounded to 100,000 entries, 64 MiB per file and 512 MiB total.
 The offline command also accepts `--loki-response FILE`: a bounded Loki streams
 response from the fixed occurrence-reader proxy. A raw response reaching
 5,000 entries cannot prove exhaustion and fails with coverage UNKNOWN.
-The daily empirical cache join instead uses `--loki-url URL`, splitting its
-at-most-24-hour live window into half-open hour windows. Each HTTP page is bounded
-to 5,000 entries and 64 MiB, with a 512 MiB total download budget.
-A full page continues at its greatest timestamp inclusively, preserving tied
-boundary entries; only a short page proves that hour exhausted. A full page
-whose cursor cannot advance fails loudly instead of skipping tied entries.
-Malformed/out-of-window/nonmonotonic data, HTTP errors, redirects and exhausted
-byte budgets likewise fail. Only after all hours are exhausted do producer
-ledger envelopes reconstruct original snapshots by ordinal, count and SHA-256;
-snapshots may span pages and hours. Missing, conflicting or corrupt snapshots
-fail with coverage UNKNOWN. No source header or fleet-completeness claim is synthesized.
+The daily empirical cache join instead uses `--loki-url URL --output FILE`,
+splitting its at-most-24-hour live window into half-open hour windows. Each HTTP
+page is bounded to 5,000 entries and 64 MiB. A full page continues at its greatest
+timestamp inclusively, preserving tied boundary entries; only a short page proves
+that hour exhausted. A full page whose cursor cannot advance fails loudly instead
+of skipping tied entries. Malformed/out-of-window/nonmonotonic data, HTTP errors,
+redirects and page-budget exhaustion likewise fail with coverage UNKNOWN.
+Live retrieval, reconciliation and report writing share a ten-minute wall-time
+budget, not a cumulative byte cap. Valid native occurrence content can exceed
+512 MiB/day; page consumption stages rows into a disposable, invocation-scoped
+SQLite ledger on the report's filesystem, not the ambient temporary volume,
+instead of retaining the whole day in RAM. Snapshot ordinal, count,
+duplicate consistency and SHA-256 validation remain strict; snapshots may span
+pages and hours and remain bounded to 5,000 rows and 64 MiB each. Missing,
+conflicting or corrupt snapshots fail. Globally conflicting records are suppressed
+with explicit evidence gaps, using the same native row semantics as offline
+reconciliation. Only after exhaustion and reconciliation does the full JSON report
+stream to `--output FILE`; stdout contains small record/gap/page/byte counts.
+The full report is published by atomic rename only after successful completion;
+failure preserves any previous report. Scoped disk state is removed on success
+and failure. No source header or fleet-completeness claim is synthesized.
 Scheduled reads cover the previous UTC day; manual dispatches cover the rolling
 24 hours ending at query time, allowing a newly deployed producer to be measured
 without waiting for midnight. Manual dispatch may instead supply paired

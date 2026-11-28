@@ -473,7 +473,11 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   expect(read.run).toContain('occurrences --loki-url "$BUCK2_OCCURRENCE_READ_URL"')
   expect(read.run).not.toContain('occurrences --loki-response')
   expect(read.run).not.toContain('curl ')
-  expect(read.run).toContain('.evidenceGaps | length')
+  expect(read.run).toContain('--output "$OCCURRENCE_PROOF/occurrences.json"')
+  expect(read.run).toContain('> "$OCCURRENCE_PROOF/summary.json"')
+  expect(read.run).toContain('.recordCount')
+  expect(read.run).toContain('.evidenceGapCount')
+  expect(read.run).toContain('.downloadedBytes')
   expect(read.run).toContain('Coverage: UNKNOWN')
   expect(
     steps.find((step) => step.name === 'Notice unconfigured occurrence reader')?.run,
@@ -496,7 +500,8 @@ test('manual occurrence queries cover the last 24 hours and retain per-occurrenc
   expect(publish.if).toContain("always() && steps.occurrence-query.outcome == 'success'")
   expect(publish.if).toContain("steps.linux-sandbox-admission.outcome == 'success'")
   expect(publish.uses).toBeUndefined()
-  expect(publish.run).toContain('jq . "$proof"')
+  expect(publish.run).toContain('cat "$proof"')
+  expect(publish.run).not.toContain('jq . "$proof"')
   expect(publish.run).toContain('if (( bytes < 900000 )); then')
   expect(publish.run).toContain('Full per-occurrence JSON is in this step output')
   expect(publish.run).toContain('tojson')

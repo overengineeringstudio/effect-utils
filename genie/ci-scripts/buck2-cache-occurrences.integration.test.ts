@@ -148,23 +148,33 @@ it('queries real native retained records by time, host and full key without clai
     },
   })
   try {
-    expect(
-      JSON.parse(
-        await run([
-          process.execPath,
-          cli,
-          'occurrences',
-          '--loki-url',
-          new URL('/buck2-occurrences/v1/query_range', server.url).href,
-          '--query-host',
-          keyed.host,
-          '--since',
-          since,
-          '--until',
-          until,
-        ]),
-      ),
-    ).toEqual(all)
+    const output = join(directory, 'live.json')
+    const summary = JSON.parse(
+      await run([
+        process.execPath,
+        cli,
+        'occurrences',
+        '--loki-url',
+        new URL('/buck2-occurrences/v1/query_range', server.url).href,
+        '--output',
+        output,
+        '--query-host',
+        keyed.host,
+        '--since',
+        since,
+        '--until',
+        until,
+      ]),
+    )
+    expect(JSON.parse(await Bun.file(output).text())).toEqual(all)
+    expect(summary).toMatchObject({
+      recordCount: all.records.length,
+      evidenceGapCount: all.evidenceGaps.length,
+      pages: 1,
+      rows: values.length,
+      coverage: 'UNKNOWN',
+    })
+    expect(summary.downloadedBytes).toBeGreaterThan(0)
     expect(requests).toHaveLength(1)
     expect(requests[0]!.searchParams.get('host')).toBe(keyed.host)
     expect(requests[0]!.searchParams.get('start')).toBe(
@@ -190,8 +200,20 @@ it('rejects mixed live/offline inputs, misplaced query hosts and oversized live 
       message: '--query-host requires --loki-url',
     },
     {
-      args: ['--loki-url', endpoint],
+      args: ['--loki-url', endpoint, '--output', '/not-written.json'],
       message: 'Live occurrence queries must cover at most 24 hours',
+    },
+    {
+      args: ['--loki-url', endpoint],
+      message: '--loki-url requires --output FILE',
+    },
+    {
+      args: ['--loki-url', endpoint, '--output', ''],
+      message: '--loki-url requires --output FILE',
+    },
+    {
+      args: ['--records-dir', '/not-read', '--output', '/not-written.json'],
+      message: '--output requires --loki-url',
     },
   ]
   for (const entry of cases) {
