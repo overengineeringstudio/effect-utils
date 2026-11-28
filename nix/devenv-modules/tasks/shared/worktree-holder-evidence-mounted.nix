@@ -25,7 +25,13 @@ let
   );
 in
 assert builtins.isList allowedRoots && builtins.all builtins.isString allowedRoots;
-pkgs.runCommand (if ownedVmClassDiagnostics then "holder-evidence-native-membership-owned-vm-diagnostics" else "holder-evidence-native-membership")
+pkgs.runCommand
+  (
+    if ownedVmClassDiagnostics then
+      "holder-evidence-native-membership-owned-vm-diagnostics"
+    else
+      "holder-evidence-native-membership"
+  )
   {
     nativeBuildInputs = [
       pkgs.rustc
