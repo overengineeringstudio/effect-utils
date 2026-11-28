@@ -152,8 +152,12 @@ const preserveHostlessEvidence = (
     console.error(JSON.stringify({ event: 'hostless-case-diagnostics-unavailable', root, stage }))
   }
 }
-const fixture = (address = 'grpc://127.0.0.1:1', archive = 'http://127.0.0.1:1/cas/'): string => {
-  const root = mkdtempSync(join(tmpdir(), 'direct-buck-posture-'))
+const fixture = (
+  address = 'grpc://127.0.0.1:1',
+  archive = 'http://127.0.0.1:1/cas/',
+  parent = tmpdir(),
+): string => {
+  const root = mkdtempSync(join(parent, 'direct-buck-posture-'))
   roots.push(root)
   writeFileSync(join(root, '.buckroot'), '')
   writeFileSync(join(root, 'evidence-start'), `1700000000000\n${realpathSync(root)}\n1\n`)
@@ -1498,7 +1502,9 @@ describe('native build ID registry', () => {
   ])(
     'collects a real leaf-command sink with no Bun utility on PATH: $requested',
     async ({ requested }) => {
-      const root = fixture()
+      // Real Bun fixtures must not spend the unchanged deadline scanning shared /tmp ancestors.
+      const root = fixture(undefined, undefined, homedir())
+      expect(root.startsWith(`${realpathSync(new URL('..', import.meta.url))}/`)).toBe(false)
       const evidence = join(root, 'evidence.json')
       symlinkSync(new URL('../genie', import.meta.url).pathname, join(root, 'genie'))
       const native = join(root, 'native')

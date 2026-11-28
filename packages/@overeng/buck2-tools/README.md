@@ -173,6 +173,13 @@ fixture inside its real parent's enforced scope. Only that fixture sets
 the same bounded child. The real outer gate, physical cgroup, disk floor, deadline,
 and native teardown assertions remain unchanged.
 
+Standalone import-form and hostless native-build-ID fixtures allocate private
+temporary roots under the user's home, outside the repository. Bun enumerates
+script ancestors at startup; the busy shared `/tmp` must not consume those
+fixtures' unchanged deadlines. Standalone module isolation, hostile-PATH evidence,
+native event/census assertions and all other fixture runtime boundaries remain
+unchanged.
+
 ## Referenced TypeScript workspace checks
 
 `tsgo_workspace_check` preserves an authored `tsgo --build --force <project>`

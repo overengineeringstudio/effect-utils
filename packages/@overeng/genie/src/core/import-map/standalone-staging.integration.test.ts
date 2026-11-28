@@ -232,8 +232,10 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
     },
   ]) {
     it(`classifies ${fixture.name} consistently with isolated Node stripping`, async () => {
-      const isolated = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'staging-import-form-')))
+      // Bun scans script ancestors; keep unrelated shared /tmp enumeration out of this deadline.
+      const isolated = realpathSync(mkdtempSync(path.join(os.homedir(), 'staging-import-form-')))
       try {
+        expect(isolated.startsWith(`${realpathSync(root)}${path.sep}`)).toBe(false)
         const source = path.join(isolated, 'fixture.mts')
         writeFileSync(source, fixture.code)
         await runTsFileAnalysis({
