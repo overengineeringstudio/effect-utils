@@ -17,6 +17,14 @@ const SYS_OPENAT2: c_long = 437;
 const SYS_KCMP: c_long = 312;
 #[cfg(target_arch = "aarch64")]
 const SYS_KCMP: c_long = 272;
+#[cfg(target_arch = "x86_64")]
+const SYS_MEMFD_CREATE: c_long = 319;
+#[cfg(target_arch = "aarch64")]
+const SYS_MEMFD_CREATE: c_long = 279;
+#[cfg(target_arch = "x86_64")]
+const SYS_STATX: c_long = 332;
+#[cfg(target_arch = "aarch64")]
+const SYS_STATX: c_long = 291;
 const O_PATH: u64 = 0x200000;
 const O_CLOEXEC: u64 = 0x80000;
 #[cfg(target_arch = "x86_64")]
@@ -71,6 +79,16 @@ pub fn pin_task(tid: u32) -> io::Result<OwnedFd> {
     descriptor(unsafe { syscall(SYS_PIDFD_OPEN, c_long::from(tid), 0x80 as c_int) })
 }
 
+pub fn internal_shmem_witness() -> io::Result<OwnedFd> {
+    // No HUGETLB: the kernel creates this empty file on its internal shmem
+    // mount. MFD_CLOEXEC | MFD_NOEXEC_SEAL = 0x9; no names or flags from callers.
+    // SAFETY: the static name is NUL-terminated, scalar flags use the Linux ABI,
+    // and success transfers this fresh descriptor to exactly one OwnedFd.
+    descriptor(unsafe {
+        syscall(SYS_MEMFD_CREATE, c"holder-evidence-internal-shmem".as_ptr(), 0x9 as c_int)
+    })
+}
+
 pub fn duplicate_process_fd(process: &OwnedFd, fd: i32) -> io::Result<OwnedFd> {
     if fd < 3 {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "standard descriptor is not an admitted lease/root"));
@@ -99,6 +117,44 @@ pub fn filesystem_type(fd: &impl AsRawFd) -> io::Result<u64> {
         return Err(io::Error::last_os_error());
     }
     Ok(buffer[0])
+}
+
+/// The legacy mount ID, exactly as exposed by proc fdinfo and mountinfo.
+/// Do not request STATX_MNT_ID_UNIQUE: namespace records use the legacy ID.
+pub fn mount_id(fd: &impl AsRawFd) -> io::Result<u64> {
+    const STATX_MNT_ID: u32 = 0x1000;
+    let mut buffer = [0u64; 32];
+    // SAFETY: Linux statx is 256 bytes on both supported ABIs. This aligned,
+    // writable buffer lives through the call. AT_EMPTY_PATH (0x1000) queries
+    // the retained FD itself, including O_PATH, without pathname resolution.
+    if unsafe {
+        syscall(SYS_STATX, fd.as_raw_fd(), c"".as_ptr(), 0x1000 as c_int,
+            STATX_MNT_ID, buffer.as_mut_ptr())
+    } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // UAPI struct statx: stx_mask at byte 0, stx_mnt_id at byte 144.
+    checked_mount_id(buffer[0] as u32, buffer[18])
+}
+
+fn checked_mount_id(mask: u32, id: u64) -> io::Result<u64> {
+    if mask & 0x1000 == 0 {
+        return Err(io::Error::other("missing held mount identity"));
+    }
+    // Internal shmem mounts legitimately report legacy ID zero, both here and
+    // in fdinfo. Preserve that identity; zero is not missing when the mask is set.
+    Ok(id)
+}
+
+#[cfg(test)]
+mod mount_id_tests {
+    #[test]
+    fn missing_mount_field_fails_but_kernel_legacy_zero_is_preserved() {
+        assert!(super::checked_mount_id(0, 7).is_err());
+        assert!(super::checked_mount_id(0x4000, 7).is_err());
+        assert_eq!(super::checked_mount_id(0x1000, 0).unwrap(), 0);
+        assert_eq!(super::checked_mount_id(0x1000, 7).unwrap(), 7);
+    }
 }
 
 pub fn is_real_root() -> bool {

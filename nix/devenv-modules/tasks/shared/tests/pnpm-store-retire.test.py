@@ -71,9 +71,9 @@ class RetirementTests(unittest.TestCase):
         (path / "v11/files/aa").mkdir(parents=True)
         (path / "v11/files/aa/payload").write_text("preserved payload\n")
 
-    def cli(self, *args, extra_env=None, target=True):
+    def cli(self, *args, extra_env=None, target=True, safe_path=False):
         env = dict(self.env, **(extra_env or {}))
-        argv = [sys.executable, str(SHARED / "pnpm-store-retire.py"), str(ROOT / "pnpm-install-contract.json"), str(SHARED / "pnpm-task-helpers.sh")]
+        argv = [sys.executable, *(["-P"] if safe_path else []), str(SHARED / "pnpm-store-retire.py"), str(ROOT / "pnpm-install-contract.json"), str(SHARED / "pnpm-task-helpers.sh")]
         if target:
             argv.append(str(self.store))
         return subprocess.run([*argv, *args], env=env, cwd=self.repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -100,6 +100,30 @@ class RetirementTests(unittest.TestCase):
         self.assertTrue(self.store.is_dir())
         self.assertNotEqual(self.cli(target=False).returncode, 0)
         self.assertEqual(self.cli(target=False, extra_env={"PNPM_RETIRE_STORE_DIR": str(self.store)}).returncode, 0)
+
+    def test_safe_path_survives_real_maintenance_lease_reexec(self):
+        observer = self.base / "observer"
+        observer.mkdir()
+        receipt = observer / "receipt.jsonl"
+        (observer / "sitecustomize.py").write_text(
+            "import json, os, sys\n"
+            "if sys.argv[0].endswith('pnpm-store-retire.py'):\n"
+            "    leased = os.environ.get('_PNPM_RETIRE_LEASED') == '1'\n"
+            "    if leased:\n"
+            "        os.fstat(202)\n"
+            "    with open(os.environ['SAFE_PATH_RECEIPT'], 'a') as output:\n"
+            "        output.write(json.dumps({'safe_path': sys.flags.safe_path, 'leased': leased}) + '\\n')\n"
+        )
+        result = self.cli(safe_path=True, extra_env={
+            "PYTHONPATH": str(observer), "SAFE_PATH_RECEIPT": str(receipt),
+        })
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["verdict"], "eligible")
+        self.assertEqual([json.loads(line) for line in receipt.read_text().splitlines()], [
+            {"safe_path": True, "leased": False},
+            {"safe_path": True, "leased": True},
+        ])
+        self.assertEqual((self.store / "v11/files/aa/payload").read_text(), "preserved payload\n")
 
     def test_apply(self):
         result = self.cli("--apply")

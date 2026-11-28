@@ -2,6 +2,19 @@
 
 This directory contains devenv task modules organized by reusability.
 
+Standalone Python helpers interpolated directly into Nix launchers live at the
+root of `/nix/store`. Invoke these stdlib-only helpers with Python's `-P` flag:
+otherwise the script directory becomes an import search path and imports may
+enumerate the entire store before the helper starts. This applies to worktree
+selection, pnpm store retirement, namespace init, Cargo release-profile extraction,
+product composition, and the synthetic macOS app actions. It does not change
+stdin/`-c` invocations or package-local sibling import contracts. Declarative
+`PYTHONPATH` remains supported; no global `PYTHONSAFEPATH` is required.
+`checks.<system>.worktree-tools-identity` exercises the actual immutable launcher
+with a scoped `sitecustomize` observer and verifies its stale-publication guard.
+The pnpm retirement suite also observes both interpreter starts across the real
+maintenance-lease re-exec, verifying that `-P` survives with the lease fd intact.
+
 ## `shared/` - Reusable Tasks
 
 These tasks are meant to be imported by other repos via the flake input:
@@ -97,13 +110,71 @@ protocol and kernel libraries. It installs no server, client adapter or service.
 An empty enrollment has no eligible candidates; production callers must supply
 the same reviewed native enrollment as their server policy.
 
-`NativeView` pins the task root, complete bounded mount snapshot and actual
-mountpoint objects; changed view or physical mapping invalidates the observation.
+`NativeView` owns a complete `NamespaceSnapshot` over the authenticated task's
+pinned mount-namespace FD, not its chroot-filtered mountinfo. The Linux 6.18
+FD-selector syscall boundary binds NS_GET_MNTNS_ID, namespace cardinality,
+bounded listmount/statmount records and their namespace IDs. It rejects
+malformed, duplicate or incomplete records and rechecks the entire mount set,
+task namespace and root in the same transaction. Unsupported APIs, permission
+errors and changed views remain UNKNOWN; there is no mountinfo fallback.
 `CandidateSet` matches component-scoped physical source membership, including
 mounted roots, not mere textual mount paths or common hardlinks. Store inode
 inventory is deferred until after the caller authenticates its original exclusive
 maintenance lease; worktrees are never recursively inventoried. Ordinary terminal
 devices have no candidate path and do not become protective unknowns.
+
+A full-root task may retain an executable or descriptor from before mount-namespace
+unshare: its original mount ID need not exist among the cloned task mounts.
+Only for an absent task mount ID, native membership can use the already retained
+enrollment namespace's exact mount/inode/path reopen proof. Both complete namespaces,
+task aliases and literal mounts remain independently retained and rechecked.
+Listed-but-hidden mounts and partial jailed roots do not take this path; objects
+whose mount cannot be proven in either view remain UNKNOWN. The ignored
+`candidates::tests::retained_pre_unshare_mounts_match_and_detached_mounts_remain_unknown`
+fixture keeps the collector in its enrollment namespace while an owned target
+thread unshares; it pins the target's actual TID resources through proc. Candidate
+positive and outside-executable negative both undergo frozen final closure, then
+an owned detached bind absent from both views must veto.
+
+`CandidateView` inventories every mount at or below each candidate's physical
+aliases, including covering-ancestor devices. `ScopeLedger` unions enrollment
+and every captured task contribution, requires retained ownership and an empty
+task-view cache before freezing, and cannot grow during final object closure.
+The census independently recloses every retained mount contribution, including
+those belonging to a subsequently proven departed task. Departed contributions
+close through their pinned namespace, root and mount objects without reopening
+the exited task's proc entries; surviving tasks still require live root and
+namespace binding checks. The caller re-proves departure around this retained
+closure, and any namespace, location or mounted-reference change still vetoes.
+The departure regression retains both a regular-file FD (`RetainedBytes`) and a
+directory FD (`InUse`) in the surviving task, and checks both typed effects before
+proving that a subsequent detached-mount change vetoes retained closure.
+
+An internal-shmem exclusion applies only to a regular, unlinked tmpfs FD or
+mapping whose device and mount ID equal the transaction's freshly retained
+memfd witness and are disjoint from the complete scope-device ledger. Actual
+store-inode membership wins before this exclusion. Detached/unlisted tmpfs
+objects, detached directories and tmpfs mounted inside a candidate stay
+protective; matching only the candidate root's device is insufficient.
+
+The real `internal_memfd_bind_is_einval_and_preserves_frozen_scope` fixture
+asserts exact bind-mount errno EINVAL, rather than skipping an impossible
+construction. Linux 6.18.62 `fs/namespace.c:2984-3018` rejects an unmounted
+internal source through `may_copy_tree`/`__do_loopback`; `fs/mount.h:131-134`
+excludes `MNT_NS_INTERNAL` from mounted roots.
+
+EROFS is native only for exact magic `0xe0f5e1e2` and a nonzero Linux block-device
+major; nodev/fscache/on-demand variants remain protective. Overlay and FUSE
+are never admitted by this rule. Real VM cases cover both an EROFS-held
+candidate file and an unrelated EROFS file, plus an overlay-held veto.
+
+The mounted builder exports `libexec/worktree-holder-mounted-tests`.
+Its optional `ownedVmClassDiagnostics` defaults to false and only enables
+static test-guest failure-stage labels, not foreign path disclosure. The jailed
+namespace regression constructs its mounts as a test oracle, then enumerates
+and compares them at the helper's actual four-capability production profile
+without CAP_SYS_ADMIN or setns. Privileged ignored cases must run in the sole
+joint consumer VM; merely building their runner is not qualification.
 
 Proc anonymous-kernel-object qualification is a closed, exact-name typed
 classifier, not a blanket anon_inodefs exemption. BPF map/program/link, BTF,
@@ -119,6 +190,17 @@ reviewed Linux 6.18.62 snapshot, not permission to admit future kernel names.
 The ignored `tests::actual_nonpath_eventfd_and_registered_io_uring_veto`
 fixture uses real eventfd and io_uring descriptors, registers a candidate file
 in the ring, closes its ordinary descriptor, then requires the ring veto.
+The ignored
+`tests::actual_unregistered_inflight_read_is_not_excluded_by_zero_user_files`
+submits a real unregistered FIFO READ, closes the ordinary candidate descriptor,
+observes `UserFiles: 0`, `SQEs: 0` and `CQEs: 0` while the request still owns the
+file, requires the ring veto, then completes the request with an owned FIFO write.
+Zero registered files are not a negative membership proof. Linux 6.18
+[`io_uring/fdinfo.c`](https://github.com/torvalds/linux/blob/v6.18/io_uring/fdinfo.c)
+documents imprecise active queue counters, enumerates only the registered file
+table and exposes poll opcodes without file identity. Its trylock may omit ring
+details entirely; this is not complete, independently counted in-flight-file
+coverage with a closing seal. No fdinfo text-path or zero-counter waiver exists.
 The proc builder installs its compiled runner at
 `libexec/worktree-holder-proc-tests`; it does not execute ignored tests.
 The real `tests::actual_loaded_btf_is_nonpath` fixture loads BTF without a
@@ -126,6 +208,49 @@ program; `tests::actual_bpf_stats_lease_is_nonpath` opens a statistics lease.
 Both require disposable root Linux VM qualification, as does the eventfd /
 registered-io_uring fixture. Test-only BPF privileges do not expand the helper's
 production capability set. Unit/build success is not kernel or census proof.
+
+Retained-object mount IDs come directly from `statx(AT_EMPTY_PATH,
+STATX_MNT_ID)` on the pinned descriptor, not repeated allocation/open/read/parse
+of `/proc/self/fdinfo`. The returned mask must include the requested field;
+unsupported or failed calls remain errors. Internal shmem mounts legitimately
+report legacy ID zero, exactly as fdinfo does; zero is preserved, not interpreted
+as missing. This is the legacy mount ID, never `STATX_MNT_ID_UNIQUE`. The proc runner
+compares actual root/proc/device/nsfs/socket/shmem/pidfd results with fdinfo.
+This reduces repeated metadata work without omitting any task, resource,
+candidate alias, literal mount or final namespace/generation closure.
+
+Resource collection and recheck authenticate the selected task's complete
+resources, namespace and generation plus its leader before/after. They do not
+rescan every sibling for every task: callers must close the full process group
+before and after each resource phase. Production discovery and census group
+seals enforce that obligation, including all final selection/resource closure.
+A currently authenticated live leader disproves whole-group termination without
+a sibling scan; terminal leaders retain the complete slow-path proof. No task,
+UID, resource, sibling namespace or final seal is omitted. The ignored real
+`tests::actual_large_group_task_resources_require_final_sibling_closure` fixture
+collects/rechecks 64 owned target threads, then requires a sibling namespace
+change and a newly born task to veto complete-group closure.
+
+Descriptor membership churn has a generic per-task, five-pass unpublished
+stable-pair repair, both during initial resource capture and later closing
+phases. Every pinned object from every attempted table remains retained and
+must have actual native negative membership before a changed table can close;
+candidate positives, proxy/opaque objects and failed capability proofs stay
+protective. An enumerated FD that vanishes before pinning is unclassified and
+cannot disappear through the outer ENOENT recapture. A formerly seen candidate
+also vetoes a whole-task retry instead of being forgotten. No PID/name/path-prefix
+waiver exists. Each successful table closes an independent enumeration against
+all retained slot identities and a second enumeration, with unchanged task,
+namespace, whole-group, mount and alias seals. Exhaustion remains UNKNOWN/HOLD.
+Additional pins share the existing transaction-wide object bound; the final
+receipt separately counts retained objects, retained ordinary descriptor pins
+and the last authenticated ordinary descriptor-table slots, not their union.
+The ignored real
+`candidates::tests::actual_fd_snapshot_repair_preserves_positive_unknown_and_final_seals`
+uses an owned exec'd FD mutator and frozen native candidate coverage. It exercises
+initial capture, two late noncandidate repairs, a closed candidate FD veto,
+io_uring rejection and deterministic five-pass exhaustion without foreign
+lifecycle changes. Source/build success is not execution of this kernel fixture.
 
 Task departure is non-holding only for a missing nonleader re-proven absent
 from the retained leader's task list, with the original live leader generation
@@ -145,14 +270,11 @@ empty mappings or departure evidence. The ignored
 `tests::actual_departed_thread_churn_preserves_survivor_fd` regression exercises
 real task births/exits, a surviving unshared FD table and file-backed mapping,
 newcomer veto, live FD disappearance and failed leader-generation proof.
-These source-only changes add no activation, alias wire or diagnostic mode.
+These source-only changes do not activate a collector or add a diagnostic mode.
 
-The native filesystem classifier also admits exact EROFS magic `0xe0f5e1e2`
-only with a nonzero Linux device major from the same held file. Nodev
-file-backed/fscache/on-demand EROFS remains unknown, as do overlay and FUSE.
-This adds no mount-membership exemption: an EROFS-held candidate file remains
-a current reference. Unit classification is not a substitute for the separate
-real mounted-file VM qualification or permission to activate a collector.
+The EROFS classification does not exempt mount membership: an EROFS-held candidate
+file remains a current reference. Unit classification is not a substitute for
+separate real mounted-file VM qualification or permission to activate a collector.
 
 The builder runs the real Rust unit runner against the reused lower libraries.
 The isolated bind/detached-mount fixture additionally requires an isolated mount
@@ -223,6 +345,13 @@ producer ID is the final output directory, not a separately compiled client or
 library. Generic worktree callers must veto every current reference, including
 retained-byte records; only the immutable-store adapter may accept complete
 byte-only evidence, and existing native store positives remain vetoes.
+
+`tests/pnpm-store-gc-holder-vm.py` is a controlled joint-VM fixture for UID1000
+without capabilities, using actual bound and portable production collectors.
+It requires opaque regular-file byte evidence to pass only through the fixed
+adapter, opaque cwd references to veto, real shared/exclusive lease exclusion,
+and immediate apply to preserve the original observation and payload during the
+24-hour floor. It never edits clocks or observations or enables a test collector.
 
 Every build reuses the protocol library's unconditional actual-codec fixture
 comparison, then compiles/runs the real server/client unit runner. Deployment

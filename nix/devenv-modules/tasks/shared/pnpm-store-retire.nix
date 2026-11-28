@@ -11,7 +11,7 @@ pkgs.writeShellApplication {
   ];
   text = ''
     umask 077
-    exec ${pkgs.python3}/bin/python3 ${./pnpm-store-retire.py} \
+    exec ${pkgs.python3}/bin/python3 -P ${./pnpm-store-retire.py} \
       ${../../../../pnpm-install-contract.json} ${./pnpm-task-helpers.sh} "$@"
   '';
 }

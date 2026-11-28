@@ -165,6 +165,54 @@ class NativePublicationCopyFixtureTest(unittest.TestCase):
             self.assertFalse(interrupted.exists())
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_interrupt_during_real_spawn_joins_the_new_session(self):
+        supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
+        child = ("import os,signal,sys;"
+                 "signal.signal(signal.SIGTERM,signal.SIG_IGN);"
+                 "os.write(int(sys.argv[1]),b'1');"
+                 "os.read(int(sys.argv[2]),1)")
+        for caught in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=caught):
+                driver = f"""
+import importlib.util, os, select, signal, subprocess, sys
+spec = importlib.util.spec_from_file_location("supervisor", {supervisor!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+ready_read, ready_write = os.pipe()
+alive_read, alive_write = os.pipe()
+spawned = []
+def interrupt_spawn(frame, event, _argument):
+    # Observe the real constructor after native exec, without replacing Popen.
+    if (event == "return" and frame.f_globals.get("__name__") == "subprocess"
+            and frame.f_code.co_name == "_execute_child"):
+        process = frame.f_locals["self"]
+        if process._child_created:
+            sys.setprofile(None)
+            spawned.append(process.pid)
+            assert select.select([ready_read], [], [], 3)[0], "child did not become ready"
+            assert os.read(ready_read, 1) == b"1"
+            os.kill(os.getpid(), {int(caught)})
+try:
+    sys.setprofile(interrupt_spawn)
+    status = module.supervise(
+        [sys.executable, "-c", {child!r}, str(ready_write), str(alive_read)],
+        None, 0.01, pass_fds=(ready_write, alive_read))
+    assert len(spawned) == 1, "real spawn boundary was not instrumented"
+    assert not module.signal_group(spawned[0], 0), "supervisor returned with a live child group"
+    print("spawn-interruption-joined", flush=True)
+finally:
+    sys.setprofile(None)
+    # This fixture-only liveness pipe releases a child if the driver fails;
+    # no owner descriptor is passed, and the join assertion precedes closure.
+    for fd in (ready_read, ready_write, alive_read, alive_write):
+        os.close(fd)
+sys.exit(status)
+"""
+                result = subprocess.run([sys.executable, "-c", driver],
+                                        capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 128 + caught, result.stderr)
+                self.assertEqual(result.stdout, "spawn-interruption-joined\n")
+
     def test_supervisors_join_real_zero_eof_and_legacy_exec_children(self):
         supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
         for mode, payload, status in (

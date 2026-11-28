@@ -207,7 +207,7 @@ let
       };
       actions.wait = {
         executable = pkgs.writeScript "synthetic-wait" ''
-          #!${pkgs.python3}/bin/python3
+          #!${pkgs.python3}/bin/python3 -P
           import time
           time.sleep(1)
           print('waited')
@@ -217,7 +217,7 @@ let
       };
       actions.noisy = {
         executable = pkgs.writeScript "synthetic-noisy" ''
-          #!${pkgs.python3}/bin/python3
+          #!${pkgs.python3}/bin/python3 -P
           import sys
           sys.stdout.buffer.write(bytes([0]) * 20000)
           sys.stderr.buffer.write(bytes([0]) * 20000)
