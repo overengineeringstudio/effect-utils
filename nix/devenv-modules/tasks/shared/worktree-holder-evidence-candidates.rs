@@ -1094,13 +1094,16 @@ mod tests {
         assert_ne!(std::fs::metadata(&outside).unwrap().dev(), candidate_device);
         let alias = outside.join("lower");
         let merged = outside.join("merged");
+        let empty = outside.join("empty-lower");
         std::fs::create_dir(&alias).unwrap();
         std::fs::create_dir(&merged).unwrap();
+        std::fs::create_dir(&empty).unwrap();
         assert!(Command::new("mount").arg("--bind").arg(&candidate).arg(&alias)
             .status().unwrap().success());
         let mut lower = Mounted(Some(alias.clone()));
         assert_eq!(std::fs::metadata(&alias).unwrap().dev(), candidate_device);
-        let options = format!("lowerdir={}", alias.display());
+        // A read-only overlay requires at least two lower layers.
+        let options = format!("lowerdir={}:{}", alias.display(), empty.display());
         assert!(Command::new("mount").args(["-t", "overlay", "overlay", "-o"])
             .arg(&options).arg(&merged).status().unwrap().success());
         let _merged = Mounted(Some(merged.clone()));
