@@ -5745,6 +5745,8 @@ jobs:
         id: occurrence-reader
         if: ${{ (github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && (vars.TS_OCCURRENCE_READ_CLIENT_ID != '' && vars.TS_OCCURRENCE_READ_AUDIENCE != '') }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
+        env:
+          XDG_RUNTIME_DIR: '${{ runner.temp }}/occurrence-reader-runtime'
         with:
           oauth-client-id: ${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}
           audience: ${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}
@@ -5809,7 +5811,26 @@ jobs:
         id: occurrence-disconnect
         if: ${{ (always() && steps.occurrence-reader.outcome != 'skipped') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
-        run: sudo tailscale logout
+        env:
+          XDG_RUNTIME_DIR: '${{ runner.temp }}/occurrence-reader-runtime'
+        run: |
+          set -euo pipefail
+          parent_pid=$(cat "$XDG_RUNTIME_DIR/tailscaled.pid")
+          [[ "$parent_pid" =~ ^[1-9][0-9]*$ ]]
+          daemon_pid=$(sudo pgrep -P "$parent_pid" -x tailscaled)
+          [[ "$daemon_pid" =~ ^[1-9][0-9]*$ ]]
+          [[ "$(sudo readlink "/proc/$daemon_pid/exe")" = /usr/local/bin/tailscaled ]]
+          sudo tailscale logout
+          sudo kill -TERM "$daemon_pid"
+          for ((attempt=0; attempt<100; attempt++)); do
+            if ! sudo test -e "/proc/$daemon_pid/exe"; then
+              sudo tailscaled --cleanup
+              exit 0
+            fi
+            sleep 0.1
+          done
+          echo "Occurrence reader daemon did not release its executable within 10s" >&2
+          exit 1
       - name: Publish per-occurrence query receipt
         if: ${{ (always() && steps.occurrence-query.outcome == 'success') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash

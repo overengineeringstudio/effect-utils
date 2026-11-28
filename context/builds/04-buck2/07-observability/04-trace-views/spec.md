@@ -220,7 +220,12 @@ This uses no new upload action; artifact transport requires the separately
 provisioned ci-storage broker.
 Only scheduled or manual runs on this repository's main branch receive the
 dedicated `tag:ci-buck2-occurrence-read` OIDC identity, disconnected before the
-existing evidence writer connects. Configure repository variables
+existing evidence writer connects. The reader action records its daemon parent
+PID in a job-private runtime directory. Disconnect logs out, verifies and
+terminates only that parent's `tailscaled` child, waits at most ten seconds for
+its executable to be released, then cleans its routes. Failure blocks writer
+enrollment; no process-name-wide kill or reader/writer tag combination is used.
+Configure repository variables
 `TS_OCCURRENCE_READ_CLIENT_ID`, `TS_OCCURRENCE_READ_AUDIENCE`,
 `BUCK2_OCCURRENCE_READ_URL` (proxy query-range endpoint, without a query string),
 and `BUCK2_OCCURRENCE_EXPECTED_HOSTS` (space-separated inventory).
